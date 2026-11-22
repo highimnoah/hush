@@ -34,6 +34,7 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    configure_bundled_gstreamer();
     enable_software_rendering_if_requested();
 
     let app = tauri::Builder::default()
@@ -200,6 +201,94 @@ fn persist_state(app: &tauri::AppHandle) {
     }
 
     let _ = state.config.set(settings);
+}
+
+/// Point GStreamer at the runtime bundled next to the executable on Windows.
+/// On other platforms, and in development, the system GStreamer installation
+/// is used and this is a no-op.
+fn configure_bundled_gstreamer() {
+    #[cfg(target_os = "windows")]
+    windows_gstreamer::configure();
+}
+
+#[cfg(target_os = "windows")]
+mod windows_gstreamer {
+    use std::path::{Path, PathBuf};
+
+    pub fn configure() {
+        let Some(root) = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        else {
+            return;
+        };
+
+        // Only take over when the runtime DLLs are actually bundled next to the
+        // executable. Development builds use the system GStreamer install.
+        let has_runtime = root.join("gstreamer-1.0-0.dll").is_file()
+            || root.join("libgstreamer-1.0-0.dll").is_file();
+        let plugins = root.join("lib").join("gstreamer-1.0");
+        if !has_runtime || !plugins.is_dir() {
+            return;
+        }
+
+        // Prefer the bundled plugins and ignore any unrelated system install,
+        // so a partial/old GStreamer on the user's PATH cannot break playback.
+        std::env::set_var("GST_PLUGIN_SYSTEM_PATH", &plugins);
+        prepend_path("GST_PLUGIN_PATH", &plugins);
+
+        let gio_modules = root.join("lib").join("gio").join("modules");
+        if gio_modules.is_dir() {
+            prepend_path("GIO_EXTRA_MODULES", &gio_modules);
+        }
+
+        let schemas = root
+            .join("share")
+            .join("glib-2.0")
+            .join("schemas");
+        if schemas.is_dir() {
+            std::env::set_var("GSETTINGS_SCHEMA_DIR", &schemas);
+        }
+
+        // Recent GStreamer releases put the scanner in libexec; older ones keep
+        // it in bin next to the DLLs.
+        let scanner = [
+            root.join("libexec")
+                .join("gstreamer-1.0")
+                .join("gst-plugin-scanner.exe"),
+            root.join("gst-plugin-scanner.exe"),
+        ]
+        .into_iter()
+        .find(|path| path.is_file());
+        if let Some(scanner) = scanner {
+            std::env::set_var("GST_PLUGIN_SCANNER", &scanner);
+        }
+
+        // glib-networking's TLS backends (OpenSSL/GnuTLS) need a CA bundle.
+        // The GStreamer runtime ships one under etc/ssl/certs.
+        let ca = root
+            .join("etc")
+            .join("ssl")
+            .join("certs")
+            .join("ca-certificates.crt");
+        if ca.is_file() {
+            std::env::set_var("SSL_CERT_FILE", &ca);
+        }
+
+        // The plugin scanner and GIO modules are separate binaries/libraries
+        // that resolve their dependencies through PATH.
+        prepend_path("PATH", &root);
+    }
+
+    fn prepend_path(key: &str, value: &Path) {
+        let mut paths: Vec<PathBuf> = vec![value.to_path_buf()];
+        if let Some(existing) = std::env::var_os(key) {
+            paths.extend(std::env::split_paths(&existing));
+        }
+        if let Ok(joined) = std::env::join_paths(paths) {
+            std::env::set_var(key, joined);
+        }
+    }
 }
 
 /// Set `HUSH_SOFTWARE_RENDERING=1` to force WebKitGTK into a software-rendered

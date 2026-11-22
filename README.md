@@ -13,6 +13,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Queue management: play next, add to queue, remove, drag-to-reorder, clear.
 - Shuffle and repeat (off / all / one).
 - Native GStreamer playback: FLAC, MP3, AAC/M4A, Opus, Ogg Vorbis, WAV (ALAC with `gst-libav`).
+- Linux and Windows 10/11 x64 builds; the Windows installer bundles the GStreamer runtime.
 - ReplayGain: Off / Track / Album, applied with GStreamer `rgvolume`, optional pre-amp.
 - Real waveform seek bar in the player bar and Now Playing (decoded in Rust and cached).
 - Now Playing view with technical track information (format, bit depth, sample rate, bitrate, channels, ReplayGain gain, server).
@@ -44,7 +45,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 │  ├─ server/          MusicServer trait + SubsonicClient (reqwest + rustls)   │
 │  ├─ player/engine.rs GStreamer pipeline: uridecodebin → rgvolume → volume    │
 │  ├─ discord.rs       discord-rich-presence IPC (dedicated thread)            │
-│  ├─ mpris.rs         MPRIS service (dedicated local tokio runtime)           │
+│  ├─ mpris/           MPRIS service on Linux; no-op stub elsewhere            │
 │  ├─ session/         Listen Together: WebSocket client + clock sync          │
 │  ├─ tray.rs          system tray menu                                        │
 │  └─ commands.rs      thin Tauri command layer with friendly errors           │
@@ -58,7 +59,7 @@ Listen Together is optional and additive: hush instances connect to a tiny self-
 
 ### Frontend / backend split
 
-- The **Rust backend** owns credentials, the Subsonic client, audio decoding, ReplayGain, Discord, MPRIS and the Listen Together session client. Credentials never reach JavaScript.
+- The **Rust backend** owns credentials, the Subsonic client, audio decoding, ReplayGain, Discord, MPRIS (Linux) and the Listen Together session client. Credentials never reach JavaScript.
 - The **React frontend** owns the queue, shuffle/repeat ordering, views and transport intent. It drives Rust with commands and listens to events.
 - Native surfaces (tray, MPRIS media keys) emit a `hush://command` event that the frontend translates into the same store actions, keeping a single source of truth for the queue.
 - In a Listen Together session, the host forwards `player://state`/`player://position`; guests estimate the host clock and apply the shared state through the same player commands.
@@ -79,7 +80,7 @@ Listen Together is optional and additive: hush instances connect to a tiny self-
 | Audio | **GStreamer (`gstreamer` crate)** | Native decoding for all required formats, real ReplayGain via `rgvolume`, HTTP streaming through `souphttpsrc`. |
 | HTTP | **`reqwest` (rustls)** | Async, no OpenSSL coupling, works cleanly with Navidrome HTTPS. |
 | Discord | **`discord-rich-presence`** | Simple IPC client, supports the “Listening” activity type. |
-| Media keys | **`mpris-server`** | Proper MPRIS service; gives media keys and desktop integration. |
+| Media keys | **`mpris-server`** (Linux) | Proper MPRIS service; gives media keys and desktop integration. Target-scoped so Windows/macOS builds stay free of D-Bus. |
 | Listen Together | **`tokio-tungstenite` + `hush-sync`** | Small JSON WebSocket protocol and a self-hosted relay; keeps the feature private and free. |
 
 ---
@@ -108,14 +109,21 @@ hush-tauri/
 │   ├── Cargo.toml · Dockerfile · README.md
 │   ├── protocol/                # shared wire types (hush-session-protocol)
 │   └── src/main.rs              # rooms, presence, host migration, message fan-out
+├── scripts/
+│   ├── set-version.mjs          # sync version from a release tag
+│   └── stage-gstreamer.ps1      # stage the Windows GStreamer runtime
+├── .github/workflows/release.yml
 └── src-tauri/
-    ├── Cargo.toml · tauri.conf.json · capabilities/default.json · icons/
+    ├── Cargo.toml · tauri.conf.json · tauri.windows.conf.json
+    ├── capabilities/default.json · icons/
+    ├── gstreamer-runtime/       # Windows runtime staging (binaries gitignored)
     └── src/
         ├── main.rs · lib.rs · commands.rs · config.rs · error.rs · events.rs · playback.rs
         ├── server/  mod.rs (trait) · subsonic.rs · types.rs
         ├── player/  mod.rs · engine.rs · waveform.rs
         ├── session/  mod.rs · service.rs
-        ├── discord.rs · mpris.rs · tray.rs
+        ├── mpris/   linux.rs · stub.rs
+        └── discord.rs · tray.rs
 ```
 
 ---
@@ -134,14 +142,18 @@ This regenerates `src-tauri/icons/` (desktop PNG/ICO/ICNS plus mobile assets). h
 
 ---
 
-## Prerequisites (Linux, primary target)
+## Prerequisites
 
 - Node.js 20+ and npm
 - Rust stable + Cargo
-- GTK 3 and WebKitGTK 4.1 development packages
 - GStreamer 1.24+ (base, good, bad, ugly). Install `gst-libav` for ALAC.
-- `libappindicator`/`libayatana-appindicator` for the system tray
+- GStreamer development headers (required to compile the `gstreamer` crate).
 - PipeWire, PulseAudio or ALSA for audio output
+
+### Linux (primary target)
+
+- GTK 3 and WebKitGTK 4.1 development packages
+- `libappindicator`/`libayatana-appindicator` for the system tray
 
 ### Arch Linux (matching the development environment)
 
@@ -158,6 +170,7 @@ sudo pacman -S --needed base-devel curl wget file openssl \
 sudo apt install build-essential curl file libssl-dev \
   libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev \
   libayatana-appindicator3-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 ```
@@ -168,11 +181,30 @@ sudo apt install build-essential curl file libssl-dev \
 sudo dnf install gcc gcc-c++ make curl file openssl-devel \
   gtk3-devel webkit2gtk4.1-devel librsvg2-devel \
   libappindicator-gtk3-devel \
+  gstreamer1-devel gstreamer1-plugins-base-devel \
   gstreamer1-plugins-base gstreamer1-plugins-good \
   gstreamer1-plugins-bad-free gstreamer1-plugins-ugly gstreamer1-libav
 ```
 
 > Codec availability can be verified with `gst-inspect-1.0 flacdec`, `opusdec`, `mpg123audiodec`, `faad`, `avdec_alac`, etc.
+
+### Windows 10/11 (x64)
+
+- Visual Studio Build Tools with the **Desktop development with C++** workload.
+- Rust stable with the MSVC toolchain (`rustup default stable-x86_64-pc-windows-msvc`).
+- The official [GStreamer MSVC x86_64 installer](https://gstreamer.freedesktop.org/download/#windows), using the **runtime and development** installation type. Install it to a short path such as `C:\gstreamer` and add `C:\gstreamer\bin` to `PATH`.
+- `pkg-config`. The GStreamer development package usually includes it; otherwise install it with `choco install pkgconfiglite`.
+- WebView2 (preinstalled on current Windows 10/11; the Tauri installer can bootstrap it).
+
+Stage the GStreamer runtime so it is bundled next to `hush.exe`, then build:
+
+```powershell
+./scripts/stage-gstreamer.ps1 -GStreamerRoot C:\gstreamer
+npm install
+npm run tauri build -- --bundles nsis
+```
+
+`src-tauri/tauri.windows.conf.json` bundles the staged runtime DLLs, plugins, GIO TLS modules, plugin scanner and CA bundle. At startup hush points GStreamer at those files, so end users do not need a separate GStreamer install. `npm run tauri dev` can use the system GStreamer installation instead.
 
 ---
 
@@ -207,8 +239,28 @@ Bundles land in `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, `.AppImage`,
 The desktop identifier is `app.hush.desktop`, so the config file lives at:
 
 ```
-~/.config/app.hush.desktop/settings.json
+~/.config/app.hush.desktop/settings.json        # Linux
+%APPDATA%\app.hush.desktop\settings.json        # Windows
 ```
+
+### Releases
+
+`.github/workflows/release.yml` builds and publishes:
+
+- **Linux:** `.deb` + `.AppImage` on Ubuntu 22.04.
+- **Windows:** NSIS `.exe` installer + a portable `.zip`, with the GStreamer runtime bundled.
+- **Relay:** a Linux x86_64 `hush-sync` binary.
+
+Push a semver tag to trigger a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow derives the app version from the tag (dropping the leading `v`), creates a **draft** GitHub release and attaches the artifacts. Review the draft, then publish it. For a manual run, use **Actions → Release → Run workflow** and enter an existing tag.
+
+Windows builds are unsigned, so SmartScreen may warn on first launch. Code signing can be added later through the Tauri Windows signing options.
 
 ---
 
@@ -294,7 +346,7 @@ Hear the same track at the same time with friends.
 
 **Self-host the relay**
 
-The relay is a separate, tiny Rust service:
+The relay is a separate, tiny Rust service. Each hush release also ships a prebuilt Linux x86_64 binary:
 
 ```bash
 cd hush-sync
@@ -405,10 +457,18 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - Install `libappindicator-gtk3` (Arch) / `libayatana-appindicator3` (Debian) / `libappindicator-gtk3` (Fedora).
 - GNOME may hide legacy tray icons; install an AppIndicator extension or use KDE/other desktops. If the tray is unavailable, hush logs a warning and continues normally.
 
-### MPRIS / media keys
+### MPRIS / media keys (Linux)
 
 - MPRIS is exposed as `org.mpris.MediaPlayer2.hush`. Check with `playerctl -l` and `playerctl status`.
 - Media keys work when a D-Bus session bus exists (normal desktop sessions). Headless sessions may not provide one; hush degrades gracefully.
+- Windows and macOS have no MPRIS integration; use the tray or in-app controls.
+
+### Windows playback
+
+- The release installer bundles GStreamer next to `hush.exe`; no separate GStreamer install is needed.
+- If audio or waveform analysis fails after a manual build, run `./scripts/stage-gstreamer.ps1 -GStreamerRoot C:\gstreamer` before `npm run tauri build`.
+- HTTPS streams need the bundled CA file (`etc\ssl\certs\ca-certificates.crt`). The app points `SSL_CERT_FILE` at it automatically when present.
+- `GST_DEBUG=3` works on Windows too; run a development build (`npm run tauri dev`) to see GStreamer and hush log output.
 
 ### Discord
 
@@ -430,8 +490,10 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - **Credentials** are stored locally in plaintext JSON; use a token. Encrypted storage (Stronghold/keyring) is a possible future upgrade.
 - **Shuffle/repeat** are session-scoped (not persisted between restarts).
 - **Listen Together** requires a running `hush-sync` relay, the same Navidrome server for all participants, and host-only control (no collaborative queue yet). Sync is music-grade, not video-grade.
+- **MPRIS / OS media keys** are Linux-only. Windows keeps the system tray, Discord Rich Presence and in-app transport, but does not yet integrate with the Windows media overlay.
+- **Windows** releases are unsigned and target Windows 10/11 x64 with WebView2. The GStreamer runtime is bundled (LGPL; sources and license at [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/)); Linux uses the distribution's GStreamer packages.
 - **Transcoding** should be disabled on the server to keep ReplayGain metadata and quality.
-- The architecture is cross-platform where reasonable, but Linux (WebKitGTK/GTK3/GStreamer/AppIndicator) is the primary target and the tested configuration.
+- Linux (WebKitGTK/GTK3/GStreamer/AppIndicator) remains the primary development target. Windows x64 releases are built in CI with a bundled GStreamer runtime; macOS is not packaged yet.
 
 ---
 
@@ -454,7 +516,9 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] ReplayGain Off/Track/Album applies gain; pre-amp changes loudness.
 - [ ] Discord presence appears while playing, hides on pause/stop; templates update; album art and the progress timeline show.
 - [ ] Tray play/pause/next/previous/show/quit.
-- [ ] MPRIS: `playerctl play-pause`, `playerctl next`, media keys.
+- [ ] MPRIS (Linux): `playerctl play-pause`, `playerctl next`, media keys.
+- [ ] Windows: install from the NSIS `.exe` or run the portable `.zip`; audio, waveform and HTTPS streams work without installing GStreamer separately.
+- [ ] Windows: tray menu, mini player, Discord presence and Listen Together work.
 - [ ] Mini player opens, stays on top, controls playback, closes.
 - [ ] Sleep timer pauses playback after the chosen interval.
 - [ ] Volume and window size are restored after closing and relaunching.

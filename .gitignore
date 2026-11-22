@@ -8,3 +8,11 @@ dist-ssr
 src-tauri/target
 src-tauri/gen
 hush-sync/target
+
+# Staged Windows GStreamer runtime (populated by the release workflow or
+# scripts/stage-gstreamer.ps1; never commit the binaries).
+src-tauri/gstreamer-runtime/**/*.dll
+src-tauri/gstreamer-runtime/**/*.exe
+src-tauri/gstreamer-runtime/**/*.crt
+src-tauri/gstreamer-runtime/**/*.compiled
+src-tauri/gstreamer-runtime/**/*.pdb

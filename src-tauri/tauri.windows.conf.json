@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "windows": {
+      "bundleVCRuntime": true
+    },
+    "resources": {
+      "gstreamer-runtime/bin/": "",
+      "gstreamer-runtime/lib/": "lib",
+      "gstreamer-runtime/libexec/": "libexec",
+      "gstreamer-runtime/etc/": "etc",
+      "gstreamer-runtime/share/": "share"
+    }
+  }
+}

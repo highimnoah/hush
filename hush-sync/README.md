@@ -22,6 +22,37 @@ Point hush at it in **Settings → Listen together → Relay URL**:
 ws://your-host:8787
 ```
 
+Each hush GitHub release also publishes a prebuilt Linux x86_64 binary named
+`hush-sync-vX.Y.Z-linux-x86_64`, so a server does not need a Rust toolchain.
+
+### systemd (Debian / Ubuntu)
+
+```bash
+sudo install -m 755 hush-sync-vX.Y.Z-linux-x86_64 /usr/local/bin/hush-sync
+sudo tee /etc/systemd/system/hush-sync.service >/dev/null <<'EOF'
+[Unit]
+Description=hush-sync relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hush-sync
+Environment=HUSH_SYNC_BIND=0.0.0.0:8787
+Restart=on-failure
+RestartSec=3
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now hush-sync
+```
+
 ## Docker
 
 ```bash

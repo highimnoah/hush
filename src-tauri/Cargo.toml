@@ -22,11 +22,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["sync", "time", "rt", "net", "io-util", "macros"] }
 async-trait = "0.1"
 gstreamer = "0.25"
-mpris-server = { version = "0.11", features = ["tokio"] }
 discord-rich-presence = "1.1"
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 hush-session-protocol = { path = "../hush-sync/protocol" }
+
+# MPRIS is a Linux/D-Bus API. Keeping the crate target-scoped avoids pulling
+# D-Bus into Windows and macOS builds.
+[target.'cfg(target_os = "linux")'.dependencies]
+mpris-server = { version = "0.11", features = ["tokio"] }
 
 [profile.release]
 opt-level = "s"

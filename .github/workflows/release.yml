@@ -1,0 +1,243 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (for example v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  GSTREAMER_VERSION: "1.28.9"
+
+jobs:
+  linux:
+    name: Linux bundles
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl wget file pkg-config patchelf libfuse2 \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav
+
+      - run: npm ci
+
+      - name: Set version from tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: node scripts/set-version.mjs
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "hush ${{ inputs.tag || github.ref_name }}"
+          releaseBody: |
+            Downloads for hush.
+
+            **Linux:** `.deb` and `.AppImage`. The AppImage needs GStreamer and
+            the usual WebKitGTK/GTK runtime libraries from your distribution.
+
+            **Windows:** NSIS installer (`.exe`) and a portable `.zip`.
+            Windows 10/11 with the WebView2 runtime is required. The GStreamer
+            runtime is bundled; media keys/MPRIS are Linux-only.
+          releaseDraft: true
+          prerelease: false
+          args: --bundles deb,appimage
+
+  windows:
+    name: Windows bundles
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install GStreamer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = $env:GSTREAMER_VERSION
+          $url = "https://gstreamer.freedesktop.org/data/pkg/windows/$version/msvc/gstreamer-1.0-msvc-x86_64-$version.exe"
+          $installer = Join-Path $env:RUNNER_TEMP "gstreamer-$version.exe"
+          $root = "C:\gstreamer"
+
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+
+          Write-Host "Installing GStreamer $version to $root"
+          $process = Start-Process -FilePath $installer -Wait -PassThru -NoNewWindow -ArgumentList @(
+            "/VERYSILENT",
+            "/NORESTART",
+            "/SUPPRESSMSGBOXES",
+            "/TYPE=devel",
+            "/ALLUSERS",
+            "/DIR=$root"
+          )
+          if ($process.ExitCode -ne 0) {
+            throw "GStreamer installer exited with code $($process.ExitCode)"
+          }
+
+          $core = Join-Path $root "bin\gstreamer-1.0-0.dll"
+          if (-not (Test-Path $core)) {
+            throw "GStreamer was not installed correctly (missing $core)"
+          }
+
+          $bin = Join-Path $root "bin"
+          $pkgConfigPath = Join-Path $root "lib\pkgconfig"
+          $pluginPath = Join-Path $root "lib\gstreamer-1.0"
+
+          @"
+          PKG_CONFIG_PATH=$pkgConfigPath
+          GSTREAMER_1_0_ROOT_MSVC_X86_64=$root
+          GST_PLUGIN_PATH=$pluginPath
+          "@ | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:Path = "$bin;$env:Path"
+          $env:PKG_CONFIG_PATH = $pkgConfigPath
+
+          if (-not (Get-Command pkg-config -ErrorAction SilentlyContinue)) {
+            Write-Host "pkg-config not found in the GStreamer runtime; installing pkgconfiglite"
+            choco install pkgconfiglite -y --no-progress
+            $chocoBin = "C:\ProgramData\chocolatey\bin"
+            $chocoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            $env:Path = "$chocoBin;$env:Path"
+          }
+
+          pkg-config --modversion gstreamer-1.0
+          if ($LASTEXITCODE -ne 0) {
+            throw "pkg-config could not find gstreamer-1.0 (PKG_CONFIG_PATH=$pkgConfigPath)"
+          }
+
+      - name: Stage bundled GStreamer runtime
+        shell: pwsh
+        run: ./scripts/stage-gstreamer.ps1 -GStreamerRoot C:\gstreamer
+
+      - run: npm ci
+
+      - name: Set version from tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: node scripts/set-version.mjs
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "hush ${{ inputs.tag || github.ref_name }}"
+          releaseBody: |
+            Downloads for hush.
+
+            **Linux:** `.deb` and `.AppImage`. The AppImage needs GStreamer and
+            the usual WebKitGTK/GTK runtime libraries from your distribution.
+
+            **Windows:** NSIS installer (`.exe`) and a portable `.zip`.
+            Windows 10/11 with the WebView2 runtime is required. The GStreamer
+            runtime is bundled; media keys/MPRIS are Linux-only.
+          releaseDraft: true
+          prerelease: false
+          args: --bundles nsis
+
+      - name: Build portable Windows zip
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $portable = Join-Path $env:RUNNER_TEMP "hush-portable"
+          Remove-Item -Recurse -Force $portable -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $portable | Out-Null
+
+          Copy-Item "src-tauri\target\release\hush.exe" $portable
+          Copy-Item "src-tauri\target\release\*.dll" $portable -ErrorAction SilentlyContinue
+          Copy-Item "src-tauri\gstreamer-runtime\bin\*" $portable
+          foreach ($dir in @("lib", "libexec", "etc", "share")) {
+            Copy-Item "src-tauri\gstreamer-runtime\$dir" $portable -Recurse
+          }
+
+          # The portable build has no installer to place the MSVC runtime.
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vsWhere) {
+            $vsRoot = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+            if ($vsRoot) {
+              $crtDir = Get-ChildItem (Join-Path $vsRoot "VC\Redist\MSVC") -Directory -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending |
+                ForEach-Object { Get-ChildItem (Join-Path $_.FullName "x64") -Directory -Filter "Microsoft.VC*.CRT" -ErrorAction SilentlyContinue } |
+                Select-Object -First 1
+              if ($crtDir) {
+                Copy-Item (Join-Path $crtDir.FullName "*.dll") $portable -ErrorAction SilentlyContinue
+              }
+            }
+          }
+
+          $zip = "hush-$env:RELEASE_TAG-windows-portable.zip"
+          Compress-Archive -Path "$portable\*" -DestinationPath $zip
+
+          gh release upload $env:RELEASE_TAG $zip --clobber
+
+  relay:
+    name: Relay binary
+    runs-on: ubuntu-22.04
+    needs: [linux, windows]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "hush-sync -> target"
+
+      - name: Build hush-sync
+        run: cargo build --release --manifest-path hush-sync/Cargo.toml
+
+      - name: Upload to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          cp hush-sync/target/release/hush-sync "hush-sync-${RELEASE_TAG}-linux-x86_64"
+          gh release upload "$RELEASE_TAG" "hush-sync-${RELEASE_TAG}-linux-x86_64" --clobber
