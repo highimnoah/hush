@@ -58,6 +58,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # linuxdeploy's strip step chokes on some bundled libraries with
+          # `.relr.dyn` sections. Skipping stripping is the supported fix.
+          NO_STRIP: "true"
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: "hush ${{ inputs.tag || github.ref_name }}"
@@ -73,7 +76,7 @@ jobs:
             runtime is bundled; media keys/MPRIS are Linux-only.
           releaseDraft: true
           prerelease: false
-          args: --bundles deb,appimage
+          args: --bundles deb,appimage -v
 
   windows:
     name: Windows bundles
