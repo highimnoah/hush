@@ -1,0 +1,28 @@
+.artwork {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  background: var(--surface-2);
+}
+
+.sm {
+  border-radius: var(--radius-sm);
+}
+.md {
+  border-radius: var(--radius);
+}
+.lg {
+  border-radius: var(--radius-lg);
+}
+.full {
+  border-radius: 50%;
+}

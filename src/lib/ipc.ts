@@ -1,0 +1,181 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+
+import type {
+  Album,
+  AlbumDetail,
+  Artist,
+  ArtistDetail,
+  GainEvent,
+  PlaybackStatus,
+  PlayerSnapshot,
+  Playlist,
+  PlaylistDetail,
+  PositionEvent,
+  RepeatMode,
+  ReplayGainMode,
+  SearchResults,
+  ServerInfo,
+  Settings,
+  Song,
+  StarKind,
+  TrackInfo,
+  UiCommand,
+  WaveformEvent,
+  SessionSnapshot,
+} from "./types";
+
+export const api = {
+  getSettings: () => invoke<Settings>("get_settings"),
+  updateSettings: (settings: Settings) =>
+    invoke<Settings>("update_settings", { settings }),
+  testConnection: (settings: Settings) =>
+    invoke<ServerInfo>("test_connection", { settings }),
+
+  getArtists: () => invoke<Artist[]>("get_artists"),
+  getAlbums: (sort = "newest", size = 100, offset = 0) =>
+    invoke<Album[]>("get_albums", { sort, size, offset }),
+  getAlbum: (id: string) => invoke<AlbumDetail>("get_album", { id }),
+  getArtist: (id: string) => invoke<ArtistDetail>("get_artist", { id }),
+  getSong: (id: string) => invoke<Song>("get_song", { id }),
+  getPlaylists: () => invoke<Playlist[]>("get_playlists"),
+  getPlaylist: (id: string) => invoke<PlaylistDetail>("get_playlist", { id }),
+  search: (query: string) => invoke<SearchResults>("search", { query }),
+  getStarred: () => invoke<SearchResults>("get_starred"),
+  getRandomSongs: (size = 50) =>
+    invoke<Song[]>("get_random_songs", { size }),
+  getCoverArtUrl: (id: string, size = 600) =>
+    invoke<string>("get_cover_art_url", { id, size }),
+  getWaveform: (id: string) => invoke<number[] | null>("get_waveform", { id }),
+  scrobble: (id: string, submission: boolean) =>
+    invoke<void>("scrobble", { id, submission }),
+  setStar: (kind: StarKind, id: string, starred: boolean) =>
+    invoke<void>("set_star", { kind, id, starred }),
+
+  playerLoad: (track: TrackInfo) => invoke<void>("player_load", { track }),
+  playerPlay: () => invoke<void>("player_play"),
+  playerPause: () => invoke<void>("player_pause"),
+  playerStop: () => invoke<void>("player_stop"),
+  playerSeek: (position: number) => invoke<void>("player_seek", { position }),
+  playerSetVolume: (volume: number) =>
+    invoke<void>("player_set_volume", { volume }),
+  playerSetMute: (muted: boolean) => invoke<void>("player_set_mute", { muted }),
+  playerSetReplayGain: (mode: ReplayGainMode) =>
+    invoke<void>("player_set_replaygain", { mode }),
+
+  getPlayerState: () => invoke<PlayerSnapshot>("get_player_state"),
+  getCurrentTrack: () => invoke<TrackInfo | null>("get_current_track"),
+  setPlaybackModes: (shuffle: boolean, repeat: RepeatMode) =>
+    invoke<void>("set_playback_modes", { shuffle, repeat }),
+
+  toggleMiniPlayer: (open: boolean) =>
+    invoke<void>("toggle_mini_player", { open }),
+  quitApp: () => invoke<void>("quit_app"),
+  showMain: () => invoke<void>("show_main"),
+  emitUiCommand: (action: string, value: string | null = null) =>
+    invoke<void>("emit_ui_command", { action, value }),
+  broadcastTrack: (track: TrackInfo | null) =>
+    invoke<void>("broadcast_track", { track }),
+
+  sessionCreate: () => invoke<void>("session_create"),
+  sessionJoin: (code: string) => invoke<void>("session_join", { code }),
+  sessionLeave: () => invoke<void>("session_leave"),
+  getSessionState: () => invoke<SessionSnapshot>("session_get_state"),
+};
+
+export interface PlayerEventHandlers {
+  state?: (snapshot: PlayerSnapshot) => void;
+  position?: (event: PositionEvent) => void;
+  ended?: () => void;
+  error?: (message: string) => void;
+  gain?: (event: GainEvent) => void;
+  track?: (track: TrackInfo | null) => void;
+  waveform?: (event: WaveformEvent) => void;
+  session?: (snapshot: SessionSnapshot) => void;
+  command?: (command: UiCommand) => void;
+}
+
+/**
+ * Subscribe to all Rust-emitted player events. Returns a cleanup function.
+ * Each subscription is guarded against the component unmounting before the
+ * async `listen` promise resolves.
+ */
+export function subscribePlayerEvents(handlers: PlayerEventHandlers): () => void {
+  let disposed = false;
+  const unlisteners: UnlistenFn[] = [];
+
+  const track = (promise: Promise<UnlistenFn>) => {
+    promise
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else unlisteners.push(unlisten);
+      })
+      .catch(() => {
+        /* event bus unavailable outside Tauri */
+      });
+  };
+
+  if (handlers.state) {
+    track(
+      listen<PlayerSnapshot>("player://state", (event) =>
+        handlers.state?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.position) {
+    track(
+      listen<PositionEvent>("player://position", (event) =>
+        handlers.position?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.ended) {
+    track(listen("player://ended", () => handlers.ended?.()));
+  }
+  if (handlers.error) {
+    track(
+      listen<{ message: string }>("player://error", (event) =>
+        handlers.error?.(event.payload.message),
+      ),
+    );
+  }
+  if (handlers.gain) {
+    track(
+      listen<GainEvent>("player://gain", (event) => handlers.gain?.(event.payload)),
+    );
+  }
+  if (handlers.track) {
+    track(
+      listen<TrackInfo | null>("hush://track", (event) =>
+        handlers.track?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.waveform) {
+    track(
+      listen<WaveformEvent>("hush://waveform", (event) =>
+        handlers.waveform?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.session) {
+    track(
+      listen<SessionSnapshot>("hush://session/state", (event) =>
+        handlers.session?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.command) {
+    track(
+      listen<UiCommand>("hush://command", (event) =>
+        handlers.command?.(event.payload),
+      ),
+    );
+  }
+
+  return () => {
+    disposed = true;
+    for (const unlisten of unlisteners) unlisten();
+    unlisteners.length = 0;
+  };
+}

@@ -1,0 +1,9 @@
+[package]
+name = "hush-session-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "Shared wire protocol for hush Listen Together"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

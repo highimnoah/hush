@@ -1,0 +1,664 @@
+import {
+  AlertCircle,
+  Check,
+  Disc3,
+  Handshake,
+  Info,
+  Palette,
+  Radio,
+  Server,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+
+import { Slider } from "../components/ui/Slider";
+import { ErrorState } from "../components/ui/ErrorState";
+import { Loading } from "../components/ui/States";
+import { Switch } from "../components/ui/Switch";
+import type { ReplayGainMode, Settings } from "../lib/types";
+import { ACCENTS } from "../lib/types";
+import { useSettings } from "../store/settings";
+import styles from "../styles/settings.module.css";
+import ui from "../styles/ui.module.css";
+
+type TestState = "idle" | "testing" | "ok" | "error";
+
+const TOKENS = [
+  "{app}",
+  "{title}",
+  "{artist}",
+  "{album}",
+  "{albumArtist}",
+  "{server}",
+  "{format}",
+  "{bitrate}",
+  "{elapsed}",
+  "{duration}",
+];
+
+const REPLAYGAIN_LABELS: Record<ReplayGainMode, string> = {
+  off: "Off",
+  track: "Track",
+  album: "Album",
+};
+
+export function SettingsView() {
+  const settings = useSettings((state) => state.settings);
+  const loaded = useSettings((state) => state.loaded);
+  const loadError = useSettings((state) => state.loadError);
+  const saveSettings = useSettings((state) => state.save);
+  const testConnection = useSettings((state) => state.test);
+
+  const [form, setForm] = useState<Settings | null>(null);
+  const [authMode, setAuthMode] = useState<"token" | "password">("token");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [testState, setTestState] = useState<TestState>("idle");
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (settings && form === null) {
+      setForm({ ...settings });
+      setAuthMode(
+        settings.token.trim() && settings.salt.trim()
+          ? "token"
+          : settings.password
+            ? "password"
+            : "token",
+      );
+    }
+  }, [settings, form]);
+
+  useEffect(() => {
+    if (form?.accent) {
+      document.documentElement.dataset.accent = form.accent;
+    }
+  }, [form?.accent]);
+
+  useEffect(() => {
+    return () => {
+      const saved = useSettings.getState().settings?.accent ?? "blue";
+      document.documentElement.dataset.accent = saved;
+    };
+  }, []);
+
+  if (!loaded) {
+    return (
+      <div className={styles.wrap}>
+        <Loading label="Loading settings…" />
+      </div>
+    );
+  }
+
+  if (!form) {
+    return (
+      <div className={styles.wrap}>
+        <ErrorState
+          title="Settings unavailable"
+          message={loadError ?? "Could not load settings."}
+        />
+      </div>
+    );
+  }
+
+  const update = (patch: Partial<Settings>) =>
+    setForm((current) => (current ? { ...current, ...patch } : current));
+
+  const normalized = (): Settings => {
+    const base = { ...form };
+    if (authMode === "token") {
+      base.password = "";
+    } else {
+      base.token = "";
+      base.salt = "";
+    }
+    return base;
+  };
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      const saved = await saveSettings(normalized());
+      setForm({ ...saved });
+      setSaveMessage("Saved");
+      window.setTimeout(() => setSaveMessage(null), 2500);
+    } catch (err) {
+      setSaveError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTestState("testing");
+    setTestMessage(null);
+    try {
+      const info = await testConnection(normalized());
+      setTestState("ok");
+      const details = [info.kind, info.version].filter(Boolean).join(" · ");
+      setTestMessage(
+        details ? `Connected to ${details}` : "Connected successfully",
+      );
+    } catch (err) {
+      setTestState("error");
+      setTestMessage(String(err));
+    }
+  };
+
+  return (
+    <div className={styles.wrap}>
+      <div className={styles.head}>
+        <div>
+          <h1 className={styles.title}>Settings</h1>
+          <div className={styles.subtitle}>
+            Connect your server, tune playback, and make hush yours.
+          </div>
+        </div>
+        <div className={styles.headActions}>
+          <button
+            type="button"
+            className={`${ui.button} ${ui.primary}`}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+          <div className={styles.saveRow}>
+            {saveError ? (
+              <span className={`${styles.status} ${styles.statusError}`}>
+                <AlertCircle size={14} />
+                {saveError}
+              </span>
+            ) : saveMessage ? (
+              <span className={`${styles.status} ${styles.statusOk}`}>
+                <Check size={14} />
+                {saveMessage}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* Server */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <Server size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>Music server</div>
+            <div className={styles.cardDesc}>
+              Navidrome or any Subsonic-compatible server.
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.stack}>
+          <div className={ui.field}>
+            <label className={ui.label} htmlFor="server-url">
+              Server URL
+            </label>
+            <input
+              id="server-url"
+              className={ui.input}
+              value={form.serverUrl}
+              onChange={(event) => update({ serverUrl: event.target.value })}
+              placeholder="https://music.example.com"
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
+
+          <div className={styles.grid2}>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="username">
+                Username
+              </label>
+              <input
+                id="username"
+                className={ui.input}
+                value={form.username}
+                onChange={(event) => update({ username: event.target.value })}
+                autoComplete="username"
+                spellCheck={false}
+              />
+            </div>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="server-name">
+                Server name (optional)
+              </label>
+              <input
+                id="server-name"
+                className={ui.input}
+                value={form.serverName}
+                onChange={(event) => update({ serverName: event.target.value })}
+                placeholder="Shown in Discord presence"
+                spellCheck={false}
+              />
+            </div>
+          </div>
+
+          <div className={ui.field}>
+            <span className={ui.label}>Authentication</span>
+            <div className={ui.segmented} style={{ width: "fit-content" }}>
+              <button
+                type="button"
+                className={`${ui.segment} ${authMode === "token" ? ui.segmentActive : ""}`}
+                onClick={() => setAuthMode("token")}
+              >
+                API token
+              </button>
+              <button
+                type="button"
+                className={`${ui.segment} ${authMode === "password" ? ui.segmentActive : ""}`}
+                onClick={() => setAuthMode("password")}
+              >
+                Password
+              </button>
+            </div>
+            <span className={ui.hint}>
+              {authMode === "token"
+                ? "Generate an API token in Navidrome, then paste the token and its salt."
+                : "Your password is stored locally on this machine."}
+            </span>
+          </div>
+
+          {authMode === "token" ? (
+            <div className={styles.grid2}>
+              <div className={ui.field}>
+                <label className={ui.label} htmlFor="token">
+                  Token
+                </label>
+                <input
+                  id="token"
+                  className={ui.input}
+                  value={form.token}
+                  onChange={(event) => update({ token: event.target.value })}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </div>
+              <div className={ui.field}>
+                <label className={ui.label} htmlFor="salt">
+                  Salt
+                </label>
+                <input
+                  id="salt"
+                  className={ui.input}
+                  value={form.salt}
+                  onChange={(event) => update({ salt: event.target.value })}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="password">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                className={ui.input}
+                value={form.password}
+                onChange={(event) => update({ password: event.target.value })}
+                autoComplete="current-password"
+              />
+            </div>
+          )}
+
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={`${ui.button} ${ui.ghost}`}
+              onClick={handleTest}
+              disabled={testState === "testing"}
+            >
+              {testState === "testing" ? "Testing…" : "Test connection"}
+            </button>
+            {testState === "ok" ? (
+              <span className={`${styles.status} ${styles.statusOk}`}>
+                <Check size={14} />
+                {testMessage}
+              </span>
+            ) : null}
+            {testState === "error" ? (
+              <span className={`${styles.status} ${styles.statusError}`}>
+                <AlertCircle size={14} />
+                {testMessage}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      {/* Playback */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <Disc3 size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>Playback</div>
+            <div className={styles.cardDesc}>
+              ReplayGain keeps loudness consistent. Changing between Off and an
+              active mode reloads the current track.
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.stack}>
+          <div className={styles.replaygainRow}>
+            <div>
+              <div className={styles.rowLabel}>ReplayGain</div>
+              <div className={styles.rowHint}>
+                Off, per-track gain, or per-album gain.
+              </div>
+            </div>
+            <div className={ui.segmented}>
+              {(["off", "track", "album"] as ReplayGainMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`${ui.segment} ${form.replaygain === mode ? ui.segmentActive : ""}`}
+                  onClick={() => update({ replaygain: mode })}
+                >
+                  {REPLAYGAIN_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className={styles.rowBetween}>
+              <div>
+                <div className={styles.rowLabel}>ReplayGain pre-amp</div>
+                <div className={styles.rowHint}>
+                  Extra headroom or gain applied on top of ReplayGain.
+                </div>
+              </div>
+              <span className={styles.preampValue}>
+                {form.replaygainPreamp > 0 ? "+" : ""}
+                {form.replaygainPreamp.toFixed(0)} dB
+              </span>
+            </div>
+            <Slider
+              value={form.replaygainPreamp + 12}
+              max={24}
+              step={1}
+              ariaLabel="ReplayGain pre-amp"
+              onChange={(value) =>
+                update({ replaygainPreamp: Math.round(value - 12) })
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Discord */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <Radio size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>Discord Rich Presence</div>
+            <div className={styles.cardDesc}>
+              Show what you are listening to while a track is playing.
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.stack}>
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>Enable Rich Presence</div>
+              <div className={styles.rowHint}>
+                Presence hides automatically when paused or stopped.
+              </div>
+            </div>
+            <Switch
+              checked={form.discordEnabled}
+              onChange={(value) => update({ discordEnabled: value })}
+              label="Enable Discord Rich Presence"
+            />
+          </div>
+
+          <div className={styles.grid2}>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="discord-client">
+                Application client ID
+              </label>
+              <input
+                id="discord-client"
+                className={ui.input}
+                value={form.discordClientId}
+                onChange={(event) =>
+                  update({ discordClientId: event.target.value })
+                }
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </div>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="discord-image">
+                Large image asset key
+              </label>
+              <input
+                id="discord-image"
+                className={ui.input}
+                value={form.discordLargeImage}
+                onChange={(event) =>
+                  update({ discordLargeImage: event.target.value })
+                }
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <div className={styles.grid2}>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="discord-details">
+                Details template
+              </label>
+              <input
+                id="discord-details"
+                className={ui.input}
+                value={form.discordDetails}
+                onChange={(event) =>
+                  update({ discordDetails: event.target.value })
+                }
+                spellCheck={false}
+              />
+            </div>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="discord-state">
+                State template
+              </label>
+              <input
+                id="discord-state"
+                className={ui.input}
+                value={form.discordState}
+                onChange={(event) =>
+                  update({ discordState: event.target.value })
+                }
+                spellCheck={false}
+              />
+            </div>
+          </div>
+
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>Show progress timeline</div>
+              <div className={styles.rowHint}>
+                Adds a live elapsed/remaining timeline to your presence.
+              </div>
+            </div>
+            <Switch
+              checked={form.discordTimestamps}
+              onChange={(value) => update({ discordTimestamps: value })}
+              label="Show progress timeline in Discord"
+            />
+          </div>
+
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>
+                Use album art as the large image
+              </div>
+              <div className={styles.rowHint}>
+                Fetches the track's cover from your HTTPS server. Falls back to
+                the asset key when unavailable.
+              </div>
+            </div>
+            <Switch
+              checked={form.discordUseCover}
+              onChange={(value) => update({ discordUseCover: value })}
+              label="Use album art in Discord"
+            />
+          </div>
+
+          <div className={styles.help}>
+            Available template fields:
+            <div className={styles.tokens}>
+              {TOKENS.map((token) => (
+                <span key={token} className={styles.token}>
+                  {token}
+                </span>
+              ))}
+            </div>
+            <p style={{ marginTop: 8 }}>
+              With album art enabled, hush passes the track's HTTPS cover URL to
+              Discord. Otherwise it uses the static asset key. To set up the
+              static asset, create a Discord application, upload an image under
+              Rich Presence → Art Assets, and paste the client ID above.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Listen together */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <Handshake size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>Listen together</div>
+            <div className={styles.cardDesc}>
+              Self-host the hush-sync relay; everyone must use the same
+              Navidrome server.
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.grid2}>
+          <div className={ui.field}>
+            <label className={ui.label} htmlFor="session-name">
+              Display name
+            </label>
+            <input
+              id="session-name"
+              className={ui.input}
+              value={form.sessionName}
+              onChange={(event) => update({ sessionName: event.target.value })}
+              placeholder={form.username || "Listener"}
+              spellCheck={false}
+            />
+          </div>
+          <div className={ui.field}>
+            <label className={ui.label} htmlFor="session-relay">
+              Relay URL
+            </label>
+            <input
+              id="session-relay"
+              className={ui.input}
+              value={form.sessionRelayUrl}
+              onChange={(event) =>
+                update({ sessionRelayUrl: event.target.value })
+              }
+              placeholder="ws://127.0.0.1:8787"
+              spellCheck={false}
+            />
+          </div>
+        </div>
+
+        <p className={styles.help} style={{ marginTop: 14 }}>
+          Run <code>hush-sync</code> (see <code>hush-sync/README.md</code>) and
+          use <code>wss://</code> behind TLS for remote friends.
+        </p>
+      </section>
+
+      {/* Appearance */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <Palette size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>Appearance</div>
+            <div className={styles.cardDesc}>
+              A flat accent colour drawn from the midnight palette.
+            </div>
+          </div>
+        </div>
+        <div className={styles.accentGrid}>
+          {Object.entries(ACCENTS).map(([key, accent]) => (
+            <button
+              key={key}
+              type="button"
+              className={`${styles.accent} ${form.accent === key ? styles.accentActive : ""}`}
+              onClick={() => update({ accent: key })}
+              aria-pressed={form.accent === key}
+            >
+              <span
+                className={styles.accentDot}
+                style={{ background: accent.color }}
+              />
+              {accent.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* About */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <Info size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>About hush</div>
+            <div className={styles.cardDesc}>A calm, minimal music player.</div>
+          </div>
+        </div>
+        <div className={styles.aboutList}>
+          <p>
+            Audio is decoded natively through GStreamer, so playback quality
+            does not depend on the WebView. Supported formats: FLAC, MP3,
+            AAC/M4A, Opus, Ogg Vorbis and WAV. ALAC is supported when the
+            <code>gst-libav</code> package is installed.
+          </p>
+          <p>
+            Server credentials are stored locally in hush's configuration
+            directory. An API token is preferred over a password.
+          </p>
+          <p>
+            On NVIDIA + Wayland systems where the window misbehaves, launch with
+            <code>HUSH_SOFTWARE_RENDERING=1</code> to force WebKitGTK into a
+            software-rendered path.
+          </p>
+          <p>
+            Media keys and desktop controls are provided through MPRIS, and the
+            system tray offers quick playback controls.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}

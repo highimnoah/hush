@@ -1,0 +1,14 @@
+[package]
+name = "hush-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Self-hosted coordination relay for hush Listen Together"
+license = "MIT"
+
+[dependencies]
+hush-session-protocol = { path = "protocol" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+serde_json = "1"
+rand = "0.8"

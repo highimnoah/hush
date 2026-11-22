@@ -1,0 +1,345 @@
+import {
+  ListMusic,
+  Maximize2,
+  Moon,
+  Pause,
+  PictureInPicture2,
+  Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Volume1,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  formatBitrate,
+  formatFormat,
+  formatSampleRate,
+  formatTime,
+} from "../lib/format";
+import { usePlayer } from "../store/player";
+import styles from "../styles/player.module.css";
+import ui from "../styles/ui.module.css";
+import { Artwork } from "./ui/Artwork";
+import { Slider } from "./ui/Slider";
+import { WaveformSeek } from "./ui/WaveformSeek";
+
+const SLEEP_OPTIONS: { label: string; value: number | null }[] = [
+  { label: "Off", value: null },
+  { label: "15 minutes", value: 15 },
+  { label: "30 minutes", value: 30 },
+  { label: "45 minutes", value: 45 },
+  { label: "60 minutes", value: 60 },
+  { label: "90 minutes", value: 90 },
+];
+
+export function PlayerBar() {
+  const track = usePlayer((state) => state.track);
+  const status = usePlayer((state) => state.status);
+  const position = usePlayer((state) => state.position);
+  const duration = usePlayer((state) => state.duration);
+  const volume = usePlayer((state) => state.volume);
+  const muted = usePlayer((state) => state.muted);
+  const shuffle = usePlayer((state) => state.shuffle);
+  const repeat = usePlayer((state) => state.repeat);
+  const replaygain = usePlayer((state) => state.replaygain);
+  const gainApplied = usePlayer((state) => state.gainApplied);
+  const toggle = usePlayer((state) => state.toggle);
+  const next = usePlayer((state) => state.next);
+  const prev = usePlayer((state) => state.prev);
+  const seek = usePlayer((state) => state.seek);
+  const setVolume = usePlayer((state) => state.setVolume);
+  const toggleMute = usePlayer((state) => state.toggleMute);
+  const setShuffle = usePlayer((state) => state.setShuffle);
+  const cycleRepeat = usePlayer((state) => state.cycleRepeat);
+  const nowPlayingOpen = usePlayer((state) => state.nowPlayingOpen);
+  const setNowPlayingOpen = usePlayer((state) => state.setNowPlayingOpen);
+  const queueOpen = usePlayer((state) => state.queueOpen);
+  const setQueueOpen = usePlayer((state) => state.setQueueOpen);
+  const miniOpen = usePlayer((state) => state.miniOpen);
+  const toggleMini = usePlayer((state) => state.toggleMini);
+  const sleepTimerEndsAt = usePlayer((state) => state.sleepTimerEndsAt);
+  const sleepTimerMinutes = usePlayer((state) => state.sleepTimerMinutes);
+  const setSleepTimer = usePlayer((state) => state.setSleepTimer);
+
+  const [preview, setPreview] = useState<number | null>(null);
+  const [sleepOpen, setSleepOpen] = useState(false);
+  const sleepRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!sleepOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (sleepRef.current && !sleepRef.current.contains(event.target as Node)) {
+        setSleepOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onPointerDown, true);
+    return () => window.removeEventListener("mousedown", onPointerDown, true);
+  }, [sleepOpen]);
+
+  const sleepActive = sleepTimerEndsAt != null;
+  const sleepRemaining = sleepActive
+    ? Math.max(0, Math.ceil((sleepTimerEndsAt! - Date.now()) / 60000))
+    : 0;
+
+  const quality = useMemo(() => {
+    if (!track) return null;
+    const parts = [
+      formatFormat(track.format),
+      track.bitDepth ? `${track.bitDepth}-bit` : null,
+      formatSampleRate(track.samplingRate),
+      formatBitrate(track.bitRate),
+    ].filter(Boolean);
+    return parts.length ? parts.join(" · ") : null;
+  }, [track]);
+
+  const playing = status === "playing";
+  const hasTrack = Boolean(track);
+  const elapsed = preview ?? position;
+  const total = duration || track?.duration || 0;
+  const volumeIcon =
+    muted || volume === 0 ? (
+      <VolumeX size={17} />
+    ) : volume < 0.5 ? (
+      <Volume1 size={17} />
+    ) : (
+      <Volume2 size={17} />
+    );
+
+  const rgLabel =
+    replaygain === "off"
+      ? null
+      : gainApplied != null && Number.isFinite(gainApplied)
+        ? `RG ${replaygain} · ${gainApplied > 0 ? "+" : ""}${gainApplied.toFixed(1)} dB`
+        : `RG ${replaygain}`;
+
+  return (
+    <footer className={styles.bar}>
+      <div className={styles.left}>
+        <button
+          type="button"
+          className={styles.artWrap}
+          onClick={() => hasTrack && setNowPlayingOpen(true)}
+          aria-label="Open now playing"
+          disabled={!hasTrack}
+        >
+          <Artwork
+            src={track?.coverUrl}
+            coverId={track?.coverArt}
+            size={120}
+            alt={track?.album ?? ""}
+          />
+        </button>
+        <button
+          type="button"
+          className={styles.metaBtn}
+          onClick={() => hasTrack && setNowPlayingOpen(true)}
+          disabled={!hasTrack}
+          aria-label="Open now playing"
+        >
+          <span className={styles.title}>
+            {track?.title ?? "Nothing playing"}
+          </span>
+          <span className={styles.artist}>
+            {track?.artist ?? "Pick something from your library"}
+          </span>
+          {(quality || rgLabel) && (
+            <span className={styles.metaBadges}>
+              {quality ? (
+                <span className={ui.badge}>{quality}</span>
+              ) : null}
+              {rgLabel ? (
+                <span className={`${ui.badge} ${ui.badgeAccent}`}>{rgLabel}</span>
+              ) : null}
+            </span>
+          )}
+        </button>
+      </div>
+
+      <div className={styles.center}>
+        <div className={styles.controls}>
+          <button
+            type="button"
+            className={`${styles.ctrlBtn} ${shuffle ? styles.ctrlActive : ""}`}
+            onClick={() => setShuffle(!shuffle)}
+            aria-label="Shuffle"
+            aria-pressed={shuffle}
+          >
+            <Shuffle size={16} />
+          </button>
+          <button
+            type="button"
+            className={styles.ctrlBtn}
+            onClick={() => prev()}
+            aria-label="Previous track"
+            disabled={!hasTrack}
+          >
+            <SkipBack size={18} fill="currentColor" strokeWidth={0} />
+          </button>
+          <button
+            type="button"
+            className={styles.playBtn}
+            onClick={() => toggle()}
+            aria-label={playing ? "Pause" : "Play"}
+            disabled={!hasTrack}
+          >
+            {playing ? (
+              <Pause size={18} fill="currentColor" strokeWidth={0} />
+            ) : (
+              <Play
+                size={18}
+                fill="currentColor"
+                strokeWidth={0}
+                style={{ marginLeft: 2 }}
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            className={styles.ctrlBtn}
+            onClick={() => next()}
+            aria-label="Next track"
+            disabled={!hasTrack}
+          >
+            <SkipForward size={18} fill="currentColor" strokeWidth={0} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.ctrlBtn} ${repeat !== "off" ? styles.ctrlActive : ""}`}
+            onClick={() => cycleRepeat()}
+            aria-label={
+              repeat === "one"
+                ? "Repeat one"
+                : repeat === "all"
+                  ? "Repeat all"
+                  : "Repeat off"
+            }
+            aria-pressed={repeat !== "off"}
+          >
+            {repeat === "one" ? <Repeat1 size={16} /> : <Repeat size={16} />}
+          </button>
+        </div>
+
+        <div className={styles.progressRow}>
+          <span className={styles.time}>{formatTime(elapsed)}</span>
+          <WaveformSeek
+            className={styles.seek}
+            value={elapsed}
+            max={total}
+            height={36}
+            disabled={!hasTrack || total <= 0}
+            ariaLabel="Seek"
+            onPreview={(value) => setPreview(value)}
+            onCommit={(value) => {
+              setPreview(null);
+              seek(value);
+            }}
+          />
+          <span className={styles.time}>{formatTime(total)}</span>
+        </div>
+      </div>
+
+      <div className={styles.right}>
+        <div className={styles.popoverWrap} ref={sleepRef}>
+          <button
+            type="button"
+            className={`${styles.ctrlBtn} ${sleepActive ? styles.sleepActive : ""}`}
+            onClick={() => setSleepOpen((open) => !open)}
+            aria-label="Sleep timer"
+            aria-haspopup="menu"
+            aria-expanded={sleepOpen}
+            title={
+              sleepActive
+                ? `Sleep timer: ${sleepRemaining} min left`
+                : "Sleep timer"
+            }
+          >
+            <Moon size={16} />
+          </button>
+          {sleepOpen ? (
+            <div className={styles.popover} role="menu">
+              <div className={styles.popoverLabel}>Sleep timer</div>
+              {SLEEP_OPTIONS.map((option) => {
+                const selected = sleepTimerMinutes === option.value;
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    className={`${styles.popoverItem} ${selected ? styles.popoverItemActive : ""}`}
+                    onClick={() => {
+                      setSleepTimer(option.value);
+                      setSleepOpen(false);
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    {selected && option.value != null ? (
+                      <span className={styles.popoverHint}>
+                        {sleepRemaining} min
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          className={`${styles.ctrlBtn} ${queueOpen ? styles.queueActive : ""}`}
+          onClick={() => setQueueOpen(!queueOpen)}
+          aria-label="Queue"
+          aria-pressed={queueOpen}
+        >
+          <ListMusic size={17} />
+        </button>
+
+        <div className={styles.volumeWrap}>
+          <button
+            type="button"
+            className={styles.ctrlBtn}
+            onClick={() => toggleMute()}
+            aria-label={muted ? "Unmute" : "Mute"}
+          >
+            {volumeIcon}
+          </button>
+          <Slider
+            className={styles.volumeSlider}
+            value={volume}
+            max={1}
+            step={0.01}
+            ariaLabel="Volume"
+            onChange={(value) => setVolume(value)}
+          />
+        </div>
+
+        <button
+          type="button"
+          className={`${styles.ctrlBtn} ${nowPlayingOpen ? styles.queueActive : ""}`}
+          onClick={() => setNowPlayingOpen(!nowPlayingOpen)}
+          aria-label="Now playing"
+          aria-pressed={nowPlayingOpen}
+        >
+          <Maximize2 size={16} />
+        </button>
+
+        <button
+          type="button"
+          className={`${styles.ctrlBtn} ${miniOpen ? styles.queueActive : ""}`}
+          onClick={() => void toggleMini()}
+          aria-label="Mini player"
+          aria-pressed={miniOpen}
+        >
+          <PictureInPicture2 size={16} />
+        </button>
+      </div>
+    </footer>
+  );
+}

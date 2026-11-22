@@ -1,0 +1,78 @@
+:root {
+  color-scheme: dark;
+
+  --bg: #0a0f1e;
+  --bg-deep: #070b16;
+  --surface: #0f1729;
+  --surface-2: #141e34;
+  --surface-3: #1b2740;
+  --surface-hover: #1f2c49;
+  --surface-press: #243352;
+
+  --border: #22304f;
+  --border-strong: #2c3d63;
+
+  --text: #e8edf7;
+  --text-secondary: #a9b6cd;
+  --text-muted: #7c89a1;
+  --text-faint: #5b6780;
+
+  --danger: #ff8f9c;
+  --success: #8fe3c4;
+  --warning: #f2cf8f;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  --sidebar-w: 252px;
+  --player-h: 106px;
+
+  --font: "Montserrat Variable", "Montserrat", system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --t: 150ms ease;
+}
+
+:root,
+[data-accent="blue"] {
+  --accent: #82aaff;
+  --accent-strong: #a9c2ff;
+  --accent-dim: #46618f;
+  --accent-ghost: #14203a;
+  --accent-contrast: #08101f;
+}
+
+[data-accent="mint"] {
+  --accent: #8fe3c4;
+  --accent-strong: #b8f0dc;
+  --accent-dim: #357d66;
+  --accent-ghost: #102a24;
+  --accent-contrast: #071711;
+}
+
+[data-accent="rose"] {
+  --accent: #f2a6c0;
+  --accent-strong: #f8c6d7;
+  --accent-dim: #8f4462;
+  --accent-ghost: #2a1620;
+  --accent-contrast: #1a0a11;
+}
+
+[data-accent="amber"] {
+  --accent: #f2cf8f;
+  --accent-strong: #f7e0b4;
+  --accent-dim: #8a6c30;
+  --accent-ghost: #2a2112;
+  --accent-contrast: #1a1306;
+}
+
+[data-accent="lavender"] {
+  --accent: #b9a7ff;
+  --accent-strong: #d3c7ff;
+  --accent-dim: #5d4d9e;
+  --accent-ghost: #211a38;
+  --accent-contrast: #0f0a1c;
+}

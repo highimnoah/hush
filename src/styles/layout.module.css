@@ -1,0 +1,245 @@
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--player-h);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg);
+}
+
+.sidebar {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 20px 16px 16px;
+  background: var(--bg-deep);
+  border-right: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 10px 10px;
+  user-select: none;
+}
+.brandMark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 20px;
+}
+.brandMark span {
+  width: 3.5px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.brandMark span:nth-child(1) {
+  height: 11px;
+  opacity: 0.75;
+}
+.brandMark span:nth-child(2) {
+  height: 20px;
+}
+.brandMark span:nth-child(3) {
+  height: 14px;
+  opacity: 0.9;
+}
+.brandName {
+  font-size: 21px;
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  text-transform: lowercase;
+  color: var(--text);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.navSection {
+  margin: 14px 10px 6px;
+  font-size: 10.5px;
+  font-weight: 680;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 520;
+  transition: background var(--t), color var(--t);
+}
+.navItem:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.navActive {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.navIcon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color var(--t);
+}
+.navItem:hover .navIcon {
+  color: var(--text-secondary);
+}
+.navActive .navIcon {
+  color: var(--accent);
+}
+
+.sidebarFooter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.connection {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+.dotOk {
+  background: var(--success);
+}
+.dotError {
+  background: var(--danger);
+}
+.dotChecking {
+  background: var(--warning);
+  animation: hush-pulse 1.2s ease-in-out infinite;
+}
+.connectionText {
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 520;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main {
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  scroll-behavior: smooth;
+}
+
+.playerSlot {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.splash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg);
+}
+.splashMark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3.5px;
+  height: 34px;
+}
+.splashMark span {
+  width: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.splashMark span:nth-child(1) {
+  height: 18px;
+  opacity: 0.75;
+}
+.splashMark span:nth-child(2) {
+  height: 34px;
+}
+.splashMark span:nth-child(3) {
+  height: 24px;
+  opacity: 0.9;
+}
+.splashName {
+  font-size: 28px;
+  font-weight: 720;
+  letter-spacing: -0.04em;
+  text-transform: lowercase;
+  color: var(--text);
+}
+
+.errorToast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--player-h) + 16px);
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 580px;
+  padding: 10px 12px 10px 15px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.toastIcon {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+.toastClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.toastClose:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+@media (max-width: 1040px) {
+  :root {
+    --sidebar-w: 222px;
+  }
+}

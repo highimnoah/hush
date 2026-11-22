@@ -1,0 +1,133 @@
+.mini {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 12px 14px;
+  background: var(--bg-deep);
+  overflow: hidden;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+}
+
+.dragZone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: grab;
+}
+.dragZone:active {
+  cursor: grabbing;
+}
+
+.art {
+  width: 54px;
+  height: 54px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.meta {
+  min-width: 0;
+  flex: 1;
+}
+.title {
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artist {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.ctrl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  transition: background var(--t), color var(--t);
+}
+.ctrl:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.playBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg-deep);
+  transition: transform var(--t), background var(--t);
+}
+.playBtn:hover {
+  transform: scale(1.05);
+  background: #fff;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  transition: background var(--t), color var(--t);
+}
+.iconBtn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.time {
+  width: 30px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.seek {
+  flex: 1;
+  min-width: 0;
+}
