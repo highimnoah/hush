@@ -14,13 +14,14 @@ on:
 permissions:
   contents: write
 
-env:
-  GSTREAMER_VERSION: "1.28.9"
-
 jobs:
   linux:
     name: Linux bundles
     runs-on: ubuntu-22.04
+    env:
+      # linuxdeploy-plugin-gstreamer uses GSTREAMER_VERSION for the API
+      # version (1.0), not the upstream release number.
+      GSTREAMER_VERSION: "1.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -58,9 +59,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # linuxdeploy's strip step chokes on some bundled libraries with
-          # `.relr.dyn` sections. Skipping stripping is the supported fix.
-          NO_STRIP: "true"
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: "hush ${{ inputs.tag || github.ref_name }}"
@@ -81,6 +79,8 @@ jobs:
   windows:
     name: Windows bundles
     runs-on: windows-latest
+    env:
+      WINDOWS_GSTREAMER_VERSION: "1.28.9"
     steps:
       - uses: actions/checkout@v4
 
@@ -99,7 +99,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $version = $env:GSTREAMER_VERSION
+          $version = $env:WINDOWS_GSTREAMER_VERSION
           $url = "https://gstreamer.freedesktop.org/data/pkg/windows/$version/msvc/gstreamer-1.0-msvc-x86_64-$version.exe"
           $installer = Join-Path $env:RUNNER_TEMP "gstreamer-$version.exe"
           $root = "C:\gstreamer"

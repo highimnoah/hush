@@ -238,14 +238,6 @@ Bundles land in `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, `.AppImage`,
 
 The Linux **AppImage** bundles its own GStreamer core, plugins and scanner (`bundleMediaFramework`), so it does not depend on the host's GStreamer plugin set. The `.deb` continues to use the distribution's GStreamer packages.
 
-If an AppImage build fails with `failed to run linuxdeploy`, run it with `NO_STRIP=true`:
-
-```bash
-NO_STRIP=true npm run tauri build -- --bundles appimage
-```
-
-linuxdeploy's strip pass can fail on `.relr.dyn` sections in some bundled system libraries; skipping stripping is the supported workaround.
-
 The desktop identifier is `app.hush.desktop`, so the config file lives at:
 
 ```
