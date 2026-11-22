@@ -203,12 +203,61 @@ fn persist_state(app: &tauri::AppHandle) {
     let _ = state.config.set(settings);
 }
 
-/// Point GStreamer at the runtime bundled next to the executable on Windows.
-/// On other platforms, and in development, the system GStreamer installation
-/// is used and this is a no-op.
+/// Configure the GStreamer runtime that ships with a bundled build.
+///
+/// On Windows this points GStreamer at the DLLs, plugins, scanner and CA
+/// bundle next to `hush.exe`. On Linux it only isolates the AppImage's plugin
+/// registry; `.deb`/source builds keep using the system GStreamer.
 fn configure_bundled_gstreamer() {
     #[cfg(target_os = "windows")]
     windows_gstreamer::configure();
+
+    // The AppImage carries its own GStreamer runtime and plugins. Point at the
+    // bundled plugin/scanner paths explicitly and give it a private registry
+    // cache so it never reads a cache written by the host's (possibly newer)
+    // GStreamer installation.
+    #[cfg(target_os = "linux")]
+    if let Some(appdir) = std::env::var_os("APPDIR").map(std::path::PathBuf::from) {
+        let plugins = appdir.join("usr/lib/gstreamer-1.0");
+        if plugins.is_dir() {
+            std::env::set_var("GST_PLUGIN_SYSTEM_PATH_1_0", &plugins);
+            std::env::set_var("GST_PLUGIN_PATH_1_0", &plugins);
+        }
+
+        // Different distros put the scanner either next to the plugins or in
+        // the multiarch helper directory.
+        let scanner = [
+            plugins.join("gst-plugin-scanner"),
+            appdir.join("usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner"),
+        ]
+        .into_iter()
+        .find(|path| path.is_file());
+        if let Some(scanner) = scanner {
+            std::env::set_var("GST_PLUGIN_SCANNER_1_0", &scanner);
+        }
+
+        let ptp = [
+            plugins.join("gst-ptp-helper"),
+            appdir.join("usr/lib/gstreamer1.0/gstreamer-1.0/gst-ptp-helper"),
+        ]
+        .into_iter()
+        .find(|path| path.is_file());
+        if let Some(ptp) = ptp {
+            std::env::set_var("GST_PTP_HELPER_1_0", &ptp);
+        }
+
+        let cache = std::env::var_os("XDG_CACHE_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(|home| std::path::PathBuf::from(home).join(".cache"))
+            })
+            .unwrap_or_else(std::env::temp_dir)
+            .join("hush");
+        if std::fs::create_dir_all(&cache).is_ok() {
+            std::env::set_var("GST_REGISTRY", cache.join("gstreamer-registry.bin"));
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -232,14 +281,19 @@ mod windows_gstreamer {
             return;
         }
 
-        // Prefer the bundled plugins and ignore any unrelated system install,
-        // so a partial/old GStreamer on the user's PATH cannot break playback.
+        // The bundled runtime must be self-contained. Replace any system
+        // GStreamer paths instead of appending them: mixing a system install
+        // with the MSVC bundle is a common source of silent plugin failures.
+        // GStreamer gives the `_1_0` variants precedence over the generic
+        // names, so set both.
+        std::env::set_var("GST_PLUGIN_SYSTEM_PATH_1_0", &plugins);
         std::env::set_var("GST_PLUGIN_SYSTEM_PATH", &plugins);
-        prepend_path("GST_PLUGIN_PATH", &plugins);
+        std::env::set_var("GST_PLUGIN_PATH_1_0", &plugins);
+        std::env::set_var("GST_PLUGIN_PATH", &plugins);
 
         let gio_modules = root.join("lib").join("gio").join("modules");
         if gio_modules.is_dir() {
-            prepend_path("GIO_EXTRA_MODULES", &gio_modules);
+            std::env::set_var("GIO_EXTRA_MODULES", &gio_modules);
         }
 
         let schemas = root
@@ -250,17 +304,35 @@ mod windows_gstreamer {
             std::env::set_var("GSETTINGS_SCHEMA_DIR", &schemas);
         }
 
-        // Recent GStreamer releases put the scanner in libexec; older ones keep
-        // it in bin next to the DLLs.
+        // Use an app-private plugin registry cache. The default Windows cache
+        // is shared with every other GStreamer application and can contain
+        // plugin paths from a different (or older) installation.
+        let cache_dir = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("app.hush.desktop");
+        let _ = std::fs::create_dir_all(&cache_dir);
+        let registry = cache_dir.join("gstreamer-registry.bin");
+        std::env::set_var("GST_REGISTRY", &registry);
+
+        if std::env::var_os("HUSH_GST_DEBUG").is_some() {
+            std::env::set_var("GST_DEBUG", "4");
+            std::env::set_var("GST_DEBUG_FILE", cache_dir.join("gstreamer.log"));
+        }
+
+        // Prefer a scanner next to the runtime DLLs. Windows resolves the
+        // scanner's own DLL imports (gstreamer, glib, VCRUNTIME140) from its
+        // directory, which avoids relying on PATH inheritance.
         let scanner = [
+            root.join("gst-plugin-scanner.exe"),
             root.join("libexec")
                 .join("gstreamer-1.0")
                 .join("gst-plugin-scanner.exe"),
-            root.join("gst-plugin-scanner.exe"),
         ]
         .into_iter()
         .find(|path| path.is_file());
         if let Some(scanner) = scanner {
+            std::env::set_var("GST_PLUGIN_SCANNER_1_0", &scanner);
             std::env::set_var("GST_PLUGIN_SCANNER", &scanner);
         }
 
@@ -275,9 +347,29 @@ mod windows_gstreamer {
             std::env::set_var("SSL_CERT_FILE", &ca);
         }
 
-        // The plugin scanner and GIO modules are separate binaries/libraries
-        // that resolve their dependencies through PATH.
+        // Make the runtime's directory an explicit DLL search directory too,
+        // so plugin DLLs and the scanner find their dependencies even when
+        // PATH is unusual.
+        set_dll_directory(&root);
         prepend_path("PATH", &root);
+    }
+
+    fn set_dll_directory(path: &Path) {
+        use std::os::windows::ffi::OsStrExt;
+
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn SetDllDirectoryW(path: *const u16) -> i32;
+        }
+
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            SetDllDirectoryW(wide.as_ptr());
+        }
     }
 
     fn prepend_path(key: &str, value: &Path) {

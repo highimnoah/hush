@@ -50,6 +50,13 @@ if (Test-Path $scanner) {
     Copy-Item (Join-Path $scanner "*") (Join-Path $stage "libexec\gstreamer-1.0") -Recurse -ErrorAction SilentlyContinue
 }
 
+# Keep a copy of the plugin scanner next to the runtime DLLs as well. GStreamer
+# finds it in libexec, but running it from the same directory as gstreamer-1.0-0.dll
+# avoids depending on PATH inheritance for its own DLL imports.
+if (Test-Path $scanner) {
+    Get-ChildItem $scanner -Filter "gst-plugin-scanner*.exe" -ErrorAction SilentlyContinue |
+        ForEach-Object { Copy-Item $_.FullName (Join-Path $stage "bin") }
+}
 # Older GStreamer layouts keep the plugin scanner in bin instead of libexec.
 Get-ChildItem (Join-Path $GStreamerRoot "bin") -Filter "gst-plugin-scanner*.exe" -ErrorAction SilentlyContinue |
     ForEach-Object { Copy-Item $_.FullName (Join-Path $stage "bin") }

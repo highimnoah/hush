@@ -36,13 +36,44 @@ struct GainEvent {
     mode: ReplayGainMode,
 }
 
+fn log_line(message: &str) {
+    eprintln!("[hush] {message}");
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Write;
+
+        let dir = std::env::var_os("LOCALAPPDATA")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("app.hush.desktop");
+        if std::fs::create_dir_all(&dir).is_ok() {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(dir.join("hush.log"))
+            {
+                let _ = writeln!(file, "{message}");
+            }
+        }
+    }
+}
+
 fn emit_error(app: &AppHandle, message: &str) {
+    log_line(&format!("playback error: {message}"));
     let _ = app.emit(
         "player://error",
         ErrorEvent {
             message: message.to_string(),
         },
     );
+}
+
+fn element_error(name: &str, err: impl std::fmt::Display) -> String {
+    format!(
+        "Could not create GStreamer element '{name}': {err}. \
+         The GStreamer plugins may be missing or could not be loaded."
+    )
 }
 
 struct Engine {
@@ -223,24 +254,24 @@ impl Engine {
         let source = gst::ElementFactory::make("uridecodebin")
             .property("uri", uri)
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|err| element_error("uridecodebin", err))?;
         let queue = gst::ElementFactory::make("queue")
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|err| element_error("queue", err))?;
         let convert = gst::ElementFactory::make("audioconvert")
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|err| element_error("audioconvert", err))?;
         let resample = gst::ElementFactory::make("audioresample")
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|err| element_error("audioresample", err))?;
         let volume = gst::ElementFactory::make("volume")
             .property("volume", self.user_volume)
             .property("mute", self.muted)
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|err| element_error("volume", err))?;
         let sink = gst::ElementFactory::make("autoaudiosink")
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|err| element_error("autoaudiosink", err))?;
 
         let pipeline = gst::Pipeline::new();
         for element in [&source, &queue, &convert, &resample, &volume, &sink] {
@@ -253,7 +284,7 @@ impl Engine {
                 .property("album-mode", self.rg_mode == ReplayGainMode::Album)
                 .property("pre-amp", self.preamp)
                 .build()
-                .map_err(|e| e.to_string())?;
+                .map_err(|err| element_error("rgvolume", err))?;
             pipeline.add(&rg).map_err(|e| e.to_string())?;
             gst::Element::link_many([&queue, &convert, &resample, &rg, &volume, &sink])
             .map_err(|e| e.to_string())?;
@@ -553,7 +584,6 @@ impl Engine {
     }
 
     fn fail(&mut self, message: &str) {
-        eprintln!("[hush] playback failed: {message}");
         self.teardown();
         self.mutate(|snapshot| {
             snapshot.status = PlaybackStatus::Stopped;

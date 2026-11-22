@@ -236,6 +236,8 @@ npm run tauri build
 
 Bundles land in `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, `.AppImage`, etc., depending on the tooling available).
 
+The Linux **AppImage** bundles its own GStreamer core, plugins and scanner (`bundleMediaFramework`), so it does not depend on the host's GStreamer plugin set. The `.deb` continues to use the distribution's GStreamer packages.
+
 The desktop identifier is `app.hush.desktop`, so the config file lives at:
 
 ```
@@ -468,7 +470,10 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - The release installer bundles GStreamer next to `hush.exe`; no separate GStreamer install is needed.
 - If audio or waveform analysis fails after a manual build, run `./scripts/stage-gstreamer.ps1 -GStreamerRoot C:\gstreamer` before `npm run tauri build`.
 - HTTPS streams need the bundled CA file (`etc\ssl\certs\ca-certificates.crt`). The app points `SSL_CERT_FILE` at it automatically when present.
-- `GST_DEBUG=3` works on Windows too; run a development build (`npm run tauri dev`) to see GStreamer and hush log output.
+- hush uses an app-private plugin registry at `%LOCALAPPDATA%\app.hush.desktop\gstreamer-registry.bin` and its own plugin paths, so an existing system GStreamer installation cannot interfere.
+- Playback failures are appended to `%LOCALAPPDATA%\app.hush.desktop\hush.log`.
+- Set `HUSH_GST_DEBUG=1` before launching `hush.exe` to write a detailed GStreamer log to `%LOCALAPPDATA%\app.hush.desktop\gstreamer.log`.
+- `GST_DEBUG=3` also works on Windows; run a development build (`npm run tauri dev`) to see GStreamer and hush log output.
 
 ### Discord
 
@@ -491,7 +496,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - **Shuffle/repeat** are session-scoped (not persisted between restarts).
 - **Listen Together** requires a running `hush-sync` relay, the same Navidrome server for all participants, and host-only control (no collaborative queue yet). Sync is music-grade, not video-grade.
 - **MPRIS / OS media keys** are Linux-only. Windows keeps the system tray, Discord Rich Presence and in-app transport, but does not yet integrate with the Windows media overlay.
-- **Windows** releases are unsigned and target Windows 10/11 x64 with WebView2. The GStreamer runtime is bundled (LGPL; sources and license at [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/)); Linux uses the distribution's GStreamer packages.
+- **Windows** releases are unsigned and target Windows 10/11 x64 with WebView2. The Windows runtime and the Linux AppImage bundle GStreamer (LGPL; sources and license at [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/)); the Linux `.deb` uses the distribution's GStreamer packages.
 - **Transcoding** should be disabled on the server to keep ReplayGain metadata and quality.
 - Linux (WebKitGTK/GTK3/GStreamer/AppIndicator) remains the primary development target. Windows x64 releases are built in CI with a bundled GStreamer runtime; macOS is not packaged yet.
 
@@ -517,6 +522,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Discord presence appears while playing, hides on pause/stop; templates update; album art and the progress timeline show.
 - [ ] Tray play/pause/next/previous/show/quit.
 - [ ] MPRIS (Linux): `playerctl play-pause`, `playerctl next`, media keys.
+- [ ] AppImage: playback works without relying on the host's GStreamer plugin set (plugins are bundled).
 - [ ] Windows: install from the NSIS `.exe` or run the portable `.zip`; audio, waveform and HTTPS streams work without installing GStreamer separately.
 - [ ] Windows: tray menu, mini player, Discord presence and Listen Together work.
 - [ ] Mini player opens, stays on top, controls playback, closes.

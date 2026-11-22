@@ -33,6 +33,11 @@
     "active": true,
     "targets": "all",
     "category": "Music",
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
     "shortDescription": "A calm, minimal music player",
     "longDescription": "hush is a calm, minimal music player for Navidrome and Subsonic-compatible servers.",
     "icon": [

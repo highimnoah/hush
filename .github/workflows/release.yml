@@ -64,8 +64,9 @@ jobs:
           releaseBody: |
             Downloads for hush.
 
-            **Linux:** `.deb` and `.AppImage`. The AppImage needs GStreamer and
-            the usual WebKitGTK/GTK runtime libraries from your distribution.
+            **Linux:** `.deb` and `.AppImage`. The AppImage bundles GStreamer
+            and its plugins; the `.deb` uses your distribution's GStreamer
+            packages.
 
             **Windows:** NSIS installer (`.exe`) and a portable `.zip`.
             Windows 10/11 with the WebView2 runtime is required. The GStreamer
@@ -169,8 +170,9 @@ jobs:
           releaseBody: |
             Downloads for hush.
 
-            **Linux:** `.deb` and `.AppImage`. The AppImage needs GStreamer and
-            the usual WebKitGTK/GTK runtime libraries from your distribution.
+            **Linux:** `.deb` and `.AppImage`. The AppImage bundles GStreamer
+            and its plugins; the `.deb` uses your distribution's GStreamer
+            packages.
 
             **Windows:** NSIS installer (`.exe`) and a portable `.zip`.
             Windows 10/11 with the WebView2 runtime is required. The GStreamer
