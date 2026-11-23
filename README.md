@@ -322,6 +322,15 @@ npm run tauri build
 If you only need a local binary and not installers, use
 `npm run tauri build -- --no-bundle` (this skips bundling and signing).
 
+**“Missing comment in secret key”** means the secret is not the private key
+file. `~/.tauri/hush.key` is one long base64 line (~348 characters). Do **not**
+use `~/.tauri/hush.key.pub` (~152 characters), a file path, or only the decoded
+payload. The release workflow validates the secret before building and fails
+with a clear message if it is malformed. The generated key has no password, so
+leave `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` unset (delete the secret if it
+exists). After fixing the secret, re-run the failed workflow; the `.sig` files
+and `latest.json` will be attached to the draft release.
+
 `tauri-action` writes the `.sig` files and
 `latest.json` into the release. Draft releases are invisible to the updater,
 so **publishing the draft is the rollout step**. The app checks:

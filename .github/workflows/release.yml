@@ -25,6 +25,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set. Add the entire contents of the private key file as a repository secret."
+            exit 1
+          fi
+          decoded="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d 2>/dev/null || true)"
+          case "$decoded" in
+            *"secret key"*)
+              echo "Updater signing key looks valid."
+              ;;
+            *)
+              echo "::error::TAURI_SIGNING_PRIVATE_KEY is malformed. Paste the entire single-line private key file (not the .pub file, not a file path, and not only the base64 payload)."
+              exit 1
+              ;;
+          esac
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -90,6 +110,26 @@ jobs:
       WINDOWS_GSTREAMER_VERSION: "1.28.9"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate updater signing key
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $key = $env:TAURI_SIGNING_PRIVATE_KEY
+          if ([string]::IsNullOrWhiteSpace($key)) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is not set. Add the entire contents of the private key file as a repository secret."
+          }
+          try {
+            $decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($key.Trim()))
+          } catch {
+            throw "TAURI_SIGNING_PRIVATE_KEY is not valid base64. Paste the entire single-line private key file."
+          }
+          if ($decoded -notmatch "secret key") {
+            throw "TAURI_SIGNING_PRIVATE_KEY is malformed. Paste the entire single-line private key file (not the .pub file, not a file path, and not only the base64 payload)."
+          }
+          Write-Host "Updater signing key looks valid."
 
       - uses: actions/setup-node@v4
         with:
