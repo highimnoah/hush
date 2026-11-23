@@ -9,7 +9,9 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  SlidersHorizontal,
+  Volume1,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -21,21 +23,14 @@ import {
   formatTime,
   isExplicit,
 } from "../lib/format";
-import type {
-  FullscreenBackground,
-  FullscreenBlur,
-  FullscreenPanel,
-  FullscreenVisualizer,
-  Settings,
-} from "../lib/types";
+import type { FullscreenPanel, Settings } from "../lib/types";
 import { usePlayer } from "../store/player";
 import { useSettings } from "../store/settings";
 import fullscreen from "../styles/fullscreen.module.css";
-import ui from "../styles/ui.module.css";
 import { Artwork } from "./ui/Artwork";
 import { ExplicitBadge } from "./ui/ExplicitBadge";
 import { LyricsPanel } from "./ui/LyricsPanel";
-import { Visualizer } from "./ui/Visualizer";
+import { Slider } from "./ui/Slider";
 import { WaveformSeek } from "./ui/WaveformSeek";
 import { WindowControls } from "./ui/WindowControls";
 
@@ -43,23 +38,6 @@ const PANELS: { key: FullscreenPanel; label: string }[] = [
   { key: "queue", label: "Queue" },
   { key: "lyrics", label: "Lyrics" },
   { key: "info", label: "Info" },
-];
-
-const BACKGROUNDS: { key: FullscreenBackground; label: string }[] = [
-  { key: "art", label: "Cover" },
-  { key: "visualizer", label: "Visualizer" },
-  { key: "dim", label: "Dim" },
-];
-
-const VISUALIZERS: { key: FullscreenVisualizer; label: string }[] = [
-  { key: "bars", label: "Bars" },
-  { key: "wave", label: "Wave" },
-];
-
-const BLURS: { key: FullscreenBlur; label: string }[] = [
-  { key: "low", label: "Low" },
-  { key: "medium", label: "Medium" },
-  { key: "high", label: "High" },
 ];
 
 export function NowPlaying() {
@@ -86,15 +64,16 @@ export function NowPlaying() {
   const cycleRepeat = usePlayer((state) => state.cycleRepeat);
   const playIndex = usePlayer((state) => state.playIndex);
 
+  const volume = usePlayer((state) => state.volume);
+  const muted = usePlayer((state) => state.muted);
+  const setVolume = usePlayer((state) => state.setVolume);
+  const toggleMute = usePlayer((state) => state.toggleMute);
+
   const settings = useSettings((state) => state.settings);
   const patchSettings = useSettings((state) => state.patch);
 
   const [preview, setPreview] = useState<number | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const background = settings?.fullscreenBackground ?? "art";
-  const visualizer = settings?.fullscreenVisualizer ?? "bars";
-  const blur = settings?.fullscreenBlur ?? "medium";
   const sidebarOpen = settings?.fullscreenSidebarOpen ?? true;
   const panel = settings?.fullscreenSidebarPanel ?? "queue";
 
@@ -108,10 +87,6 @@ export function NowPlaying() {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (settingsOpen) {
-        setSettingsOpen(false);
-        return;
-      }
       const current = useSettings.getState().settings;
       if (current?.fullscreenSidebarOpen) {
         update({ fullscreenSidebarOpen: false });
@@ -122,7 +97,7 @@ export function NowPlaying() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, settingsOpen, setOpen]);
+  }, [open, setOpen]);
 
   const info = useMemo(() => {
     if (!track) return [] as { label: string; value: string }[];
@@ -183,38 +158,16 @@ export function NowPlaying() {
   const hasTrack = Boolean(track);
   const elapsed = preview ?? position;
   const total = duration || track?.duration || 0;
-  const blurClass =
-    blur === "low"
-      ? fullscreen.blurLow
-      : blur === "high"
-        ? fullscreen.blurHigh
-        : fullscreen.blurMedium;
-
+  const volumeIcon =
+    muted || volume === 0 ? (
+      <VolumeX size={17} />
+    ) : volume < 0.5 ? (
+      <Volume1 size={17} />
+    ) : (
+      <Volume2 size={17} />
+    );
   return (
     <section className={fullscreen.overlay} aria-label="Now playing">
-      {background === "art" ? (
-        <div className={fullscreen.backdrop} aria-hidden="true">
-          <div className={`${fullscreen.backdropImage} ${blurClass}`}>
-            <Artwork
-              src={track?.coverUrl}
-              coverId={track?.coverArt}
-              size={1200}
-              alt=""
-            />
-          </div>
-          <div className={fullscreen.backdropScrim} />
-        </div>
-      ) : null}
-      {background === "visualizer" ? (
-        <div className={fullscreen.backdrop} aria-hidden="true">
-          <Visualizer
-            variant={visualizer}
-            className={fullscreen.backdropVisualizer}
-          />
-          <div className={fullscreen.backdropScrim} />
-        </div>
-      ) : null}
-
       <div className={fullscreen.top} data-tauri-drag-region>
         <div className={fullscreen.topLabel} data-tauri-drag-region>
           Now Playing
@@ -229,106 +182,6 @@ export function NowPlaying() {
           >
             <ListMusic size={17} />
           </button>
-
-          <div className={fullscreen.popoverWrap}>
-            <button
-              type="button"
-              className={`${fullscreen.ctrlBtn} ${settingsOpen ? fullscreen.ctrlActive : ""}`}
-              onClick={() => setSettingsOpen((value) => !value)}
-              aria-label="Fullscreen settings"
-              aria-haspopup="dialog"
-              aria-expanded={settingsOpen}
-            >
-              <SlidersHorizontal size={16} />
-            </button>
-            {settingsOpen ? (
-              <div
-                className={fullscreen.popover}
-                role="dialog"
-                aria-label="Fullscreen settings"
-              >
-                <div className={fullscreen.popoverRow}>
-                  <div className={fullscreen.popoverLabel}>Background</div>
-                  <div className={ui.segmented}>
-                    {BACKGROUNDS.map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={`${ui.segment} ${background === item.key ? ui.segmentActive : ""}`}
-                        onClick={() =>
-                          update({ fullscreenBackground: item.key })
-                        }
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {background === "visualizer" ? (
-                  <div className={fullscreen.popoverRow}>
-                    <div className={fullscreen.popoverLabel}>Visualizer</div>
-                    <div className={ui.segmented}>
-                      {VISUALIZERS.map((item) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          className={`${ui.segment} ${visualizer === item.key ? ui.segmentActive : ""}`}
-                          onClick={() =>
-                            update({ fullscreenVisualizer: item.key })
-                          }
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {background === "art" ? (
-                  <div className={fullscreen.popoverRow}>
-                    <div className={fullscreen.popoverLabel}>Cover blur</div>
-                    <div className={ui.segmented}>
-                      {BLURS.map((item) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          className={`${ui.segment} ${blur === item.key ? ui.segmentActive : ""}`}
-                          onClick={() => update({ fullscreenBlur: item.key })}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className={fullscreen.popoverRow}>
-                  <div className={fullscreen.popoverLabel}>Sidebar</div>
-                  <div className={ui.segmented}>
-                    <button
-                      type="button"
-                      className={`${ui.segment} ${sidebarOpen ? ui.segmentActive : ""}`}
-                      onClick={() => update({ fullscreenSidebarOpen: true })}
-                    >
-                      Shown
-                    </button>
-                    <button
-                      type="button"
-                      className={`${ui.segment} ${!sidebarOpen ? ui.segmentActive : ""}`}
-                      onClick={() => update({ fullscreenSidebarOpen: false })}
-                    >
-                      Hidden
-                    </button>
-                  </div>
-                </div>
-
-                <div className={fullscreen.popoverHint}>
-                  Escape closes the sidebar first, then this view.
-                </div>
-              </div>
-            ) : null}
-          </div>
 
           <button
             type="button"
@@ -444,7 +297,7 @@ export function NowPlaying() {
                 className={fullscreen.seek}
                 value={elapsed}
                 max={total}
-                height={52}
+                height={56}
                 disabled={!hasTrack || total <= 0}
                 ariaLabel="Seek"
                 onPreview={(value) => setPreview(value)}
@@ -454,6 +307,25 @@ export function NowPlaying() {
                 }}
               />
               <span className={fullscreen.time}>{formatTime(total)}</span>
+            </div>
+
+            <div className={fullscreen.volumeRow}>
+              <button
+                type="button"
+                className={fullscreen.ctrlBtn}
+                onClick={() => toggleMute()}
+                aria-label={muted ? "Unmute" : "Mute"}
+              >
+                {volumeIcon}
+              </button>
+              <Slider
+                className={fullscreen.volumeSlider}
+                value={volume}
+                max={1}
+                step={0.01}
+                ariaLabel="Volume"
+                onChange={(value) => setVolume(value)}
+              />
             </div>
           </div>
         </div>

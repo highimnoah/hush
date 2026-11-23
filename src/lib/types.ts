@@ -6,9 +6,6 @@ export type PlaybackStatus = "stopped" | "playing" | "paused";
 export type StarKind = "song" | "album";
 export type TransitionMode = "gapless" | "fade";
 export type SleepMode = "minutes" | "endOfTrack" | "endOfQueue";
-export type FullscreenBackground = "art" | "visualizer" | "dim";
-export type FullscreenVisualizer = "bars" | "wave";
-export type FullscreenBlur = "low" | "medium" | "high";
 export type FullscreenPanel = "queue" | "lyrics" | "info";
 
 export interface Song {
@@ -142,9 +139,6 @@ export interface Settings {
   discordTimestamps: boolean;
   discordUseCover: boolean;
   accent: string;
-  fullscreenBackground: FullscreenBackground;
-  fullscreenVisualizer: FullscreenVisualizer;
-  fullscreenBlur: FullscreenBlur;
   fullscreenSidebarOpen: boolean;
   fullscreenSidebarPanel: FullscreenPanel;
   autoUpdate: boolean;
@@ -211,11 +205,6 @@ export interface WaveformEvent {
 
 export interface AdvancedEvent {
   trackId: string;
-}
-
-export interface LevelsEvent {
-  peak: number;
-  rms: number;
 }
 
 export type SessionRole = "none" | "host" | "guest";

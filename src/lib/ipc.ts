@@ -9,7 +9,6 @@ import type {
   ArtistDetail,
   GainEvent,
   Genre,
-  LevelsEvent,
   Lyrics,
   PersistedPlayerState,
   PlaybackStatus,
@@ -98,8 +97,6 @@ export const api = {
   playerPreload: (track: TrackInfo) =>
     invoke<void>("player_preload", { track }),
   playerClearPreload: () => invoke<void>("player_clear_preload"),
-  playerSetLevelsEnabled: (enabled: boolean) =>
-    invoke<void>("player_set_levels_enabled", { enabled }),
   playerSetTransition: (mode: TransitionMode, seconds: number) =>
     invoke<void>("player_set_transition", { mode, seconds }),
   playerFadeOut: (seconds: number, pauseAfter = true) =>
@@ -146,7 +143,6 @@ export interface PlayerEventHandlers {
   session?: (snapshot: SessionSnapshot) => void;
   command?: (command: UiCommand) => void;
   advanced?: (event: AdvancedEvent) => void;
-  levels?: (event: LevelsEvent) => void;
 }
 
 /**
@@ -233,14 +229,6 @@ export function subscribePlayerEvents(handlers: PlayerEventHandlers): () => void
       ),
     );
   }
-  if (handlers.levels) {
-    track(
-      listen<LevelsEvent>("player://levels", (event) =>
-        handlers.levels?.(event.payload),
-      ),
-    );
-  }
-
   return () => {
     disposed = true;
     for (const unlisten of unlisteners) unlisten();

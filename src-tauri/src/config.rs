@@ -70,12 +70,6 @@ pub struct Settings {
 
     // --- appearance / misc ---
     pub accent: String,
-    /// Fullscreen ("now playing") backdrop: "art", "visualizer" or "dim".
-    pub fullscreen_background: String,
-    /// Fullscreen visualizer style: "bars" or "wave".
-    pub fullscreen_visualizer: String,
-    /// Fullscreen cover blur intensity: "low", "medium" or "high".
-    pub fullscreen_blur: String,
     /// Whether the fullscreen sidebar was visible last time.
     pub fullscreen_sidebar_open: bool,
     /// Last active fullscreen sidebar tab: "queue", "lyrics" or "info".
@@ -122,9 +116,6 @@ impl Default for Settings {
             discord_use_cover: true,
 
             accent: "blue".into(),
-            fullscreen_background: "art".into(),
-            fullscreen_visualizer: "bars".into(),
-            fullscreen_blur: "medium".into(),
             fullscreen_sidebar_open: true,
             fullscreen_sidebar_panel: "queue".into(),
 

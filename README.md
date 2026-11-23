@@ -19,7 +19,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Automatic update checks (opt-out) for the Windows installer and the Linux AppImage, with in-app download progress and restart-to-apply.
 - ReplayGain: Off / Track / Album, applied with GStreamer `rgvolume`, optional pre-amp.
 - Real waveform seek bar in the player bar and the fullscreen view (decoded in Rust and cached); the bar is hidden while the fullscreen view is open so only one timeline is visible.
-- Fullscreen Now Playing view with a toggleable sidebar (queue, lyrics, technical info), blurred cover art or an audio-reactive visualizer backdrop, and an in-view settings menu.
+- Fullscreen Now Playing view with a calm dim backdrop, a toggleable sidebar (queue, lyrics, technical info), and an inline volume control.
 - Synced or plain lyrics from the server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
 - Now Playing track information (format, bit depth, sample rate, bitrate, channels, ReplayGain gain, server) plus an explicit-content badge.
 - Favorites for songs (heart in track lists) and albums (hero + card).
@@ -110,7 +110,7 @@ hush-tauri/
 │   ├── components/
 │   │   ├── TitleBar.tsx · Sidebar.tsx · PlayerBar.tsx · NowPlaying.tsx (fullscreen) · QueuePanel.tsx
 │   │   ├── library/             TrackList · AlbumCard · ArtistCard · PlaylistCard
-│   │   └── ui/                  Artwork · Slider · WaveformSeek · Visualizer · LyricsPanel ·
+│   │   └── ui/                  Artwork · Slider · WaveformSeek · LyricsPanel ·
 │   │                            Dialog · ToastHost · UpdateDialog · WindowControls ·
 │   │                            ExplicitBadge · Switch · states · context menu
 │   ├── views/                   Home · Search · Together · Artists · Albums · Genres · Playlists · Liked · Settings
@@ -373,9 +373,6 @@ Everything is editable in **Settings**. A representative `settings.json`:
   "discordTimestamps": true,
   "discordUseCover": true,
   "accent": "blue",
-  "fullscreenBackground": "art",
-  "fullscreenVisualizer": "bars",
-  "fullscreenBlur": "medium",
   "fullscreenSidebarOpen": true,
   "fullscreenSidebarPanel": "queue",
   "sessionName": "noah",
@@ -471,7 +468,7 @@ Set the relay URL in **Settings → Listen together** (`ws://host:8787`). For re
 | `Ctrl` + `→` / `←` | Next / previous |
 | `Ctrl` + `↑` / `↓` | Volume up / down |
 | `Ctrl` + `M` | Mute toggle |
-| `Esc` | Close the fullscreen settings menu, then its sidebar, then the view / queue |
+| `Esc` | Close the fullscreen sidebar, then the view / queue |
 
 Media keys and desktop media controls are handled via MPRIS.
 
@@ -615,7 +612,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Explicit badge appears for flagged tracks/albums (and the 🅴 title fallback).
 - [ ] ReplayGain Off/Track/Album applies gain; pre-amp changes loudness.
 - [ ] Album playback is gapless; fade mode ramps at boundaries; changing the mode applies immediately.
-- [ ] Fullscreen: toggle sidebar; switch queue/lyrics/info tabs; cover blur, visualizer and dim backdrops; settings persist.
+- [ ] Fullscreen: toggle sidebar; switch queue/lyrics/info tabs; the volume slider and mute control stay in sync with the player bar; the sidebar tab persists.
 - [ ] Synced lyrics highlight and auto-scroll; clicking a line seeks; plain lyrics render; missing lyrics show an empty state.
 - [ ] Discord presence appears while playing, hides on pause/stop; templates update; album art and the progress timeline show.
 - [ ] Tray play/pause/next/previous/show/quit.
