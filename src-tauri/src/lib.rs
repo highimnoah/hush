@@ -41,6 +41,9 @@ pub fn run() {
     enable_software_rendering_if_requested();
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -155,6 +158,7 @@ pub fn run() {
             commands::get_player_state,
             commands::get_current_track,
             commands::set_playback_modes,
+            commands::updater_supported,
             commands::toggle_mini_player,
             commands::quit_app,
             commands::show_main,

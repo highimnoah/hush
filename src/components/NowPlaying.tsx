@@ -37,6 +37,7 @@ import { ExplicitBadge } from "./ui/ExplicitBadge";
 import { LyricsPanel } from "./ui/LyricsPanel";
 import { Visualizer } from "./ui/Visualizer";
 import { WaveformSeek } from "./ui/WaveformSeek";
+import { WindowControls } from "./ui/WindowControls";
 
 const PANELS: { key: FullscreenPanel; label: string }[] = [
   { key: "queue", label: "Queue" },
@@ -214,8 +215,10 @@ export function NowPlaying() {
         </div>
       ) : null}
 
-      <div className={fullscreen.top}>
-        <div className={fullscreen.topLabel}>Now Playing</div>
+      <div className={fullscreen.top} data-tauri-drag-region>
+        <div className={fullscreen.topLabel} data-tauri-drag-region>
+          Now Playing
+        </div>
         <div className={fullscreen.topActions}>
           <button
             type="button"
@@ -343,6 +346,8 @@ export function NowPlaying() {
           >
             <ChevronDown size={20} />
           </button>
+          <div className={fullscreen.winDivider} aria-hidden="true" />
+          <WindowControls className={fullscreen.winControls} />
         </div>
       </div>
 

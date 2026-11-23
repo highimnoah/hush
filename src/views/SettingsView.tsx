@@ -6,6 +6,7 @@ import {
   Info,
   Palette,
   Radio,
+  RefreshCw,
   Server,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -21,6 +22,7 @@ import type {
 } from "../lib/types";
 import { ACCENTS } from "../lib/types";
 import { useSettings } from "../store/settings";
+import { useUpdater } from "../store/updater";
 import styles from "../styles/settings.module.css";
 import ui from "../styles/ui.module.css";
 
@@ -51,6 +53,15 @@ export function SettingsView() {
   const loadError = useSettings((state) => state.loadError);
   const saveSettings = useSettings((state) => state.save);
   const testConnection = useSettings((state) => state.test);
+
+  const updaterStatus = useUpdater((state) => state.status);
+  const updaterSupported = useUpdater((state) => state.supported);
+  const updaterVersion = useUpdater((state) => state.version);
+  const currentVersion = useUpdater((state) => state.currentVersion);
+  const checkUpdates = useUpdater((state) => state.check);
+  const openUpdatePrompt = useUpdater((state) => state.openPrompt);
+  const openReleases = useUpdater((state) => state.openReleases);
+  const loadVersion = useUpdater((state) => state.loadVersion);
 
   const [form, setForm] = useState<Settings | null>(null);
   const [authMode, setAuthMode] = useState<"token" | "password">("token");
@@ -85,6 +96,10 @@ export function SettingsView() {
       document.documentElement.dataset.accent = saved;
     };
   }, []);
+
+  useEffect(() => {
+    void loadVersion();
+  }, [loadVersion]);
 
   if (!loaded) {
     return (
@@ -151,6 +166,23 @@ export function SettingsView() {
       setTestMessage(String(err));
     }
   };
+
+  const updateNote =
+    updaterStatus === "checking"
+      ? "Checking for updates…"
+      : updaterStatus === "up-to-date"
+        ? "You're up to date."
+        : updaterStatus === "available"
+          ? `hush ${updaterVersion ?? ""} is available.`
+          : updaterStatus === "downloading"
+            ? "Downloading update…"
+            : updaterStatus === "ready"
+              ? "Downloaded — install from the update prompt."
+              : updaterStatus === "installing"
+                ? "Installing update…"
+                : updaterStatus === "error"
+                  ? "Could not check for updates."
+                  : "";
 
   return (
     <div className={styles.wrap}>
@@ -689,6 +721,97 @@ export function SettingsView() {
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Updates */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <RefreshCw size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>Updates</div>
+            <div className={styles.cardDesc}>Keep hush up to date.</div>
+          </div>
+        </div>
+
+        {updaterSupported ? (
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>Check automatically</div>
+              <div className={styles.rowHint}>
+                Look for a new release a few seconds after launch.
+              </div>
+            </div>
+            <Switch
+              checked={form.autoUpdate}
+              onChange={(value) => update({ autoUpdate: value })}
+              label="Check for updates automatically"
+            />
+          </div>
+        ) : null}
+
+        <div className={styles.rowBetween}>
+          <div>
+            <div className={styles.rowLabel}>
+              Version {currentVersion ? currentVersion : "unknown"}
+            </div>
+            <div className={styles.rowHint}>
+              {updaterSupported
+                ? updateNote ||
+                  "Automatic updates work with the Windows installer and the Linux AppImage."
+                : "This build is updated manually from GitHub Releases."}
+            </div>
+          </div>
+          <div className={styles.actions}>
+            {updaterSupported && updaterStatus === "available" ? (
+              <button
+                type="button"
+                className={`${ui.button} ${ui.primary}`}
+                onClick={openUpdatePrompt}
+              >
+                View update
+              </button>
+            ) : null}
+            {updaterSupported ? (
+              <button
+                type="button"
+                className={`${ui.button} ${ui.ghost}`}
+                onClick={() => void checkUpdates(true)}
+                disabled={
+                  updaterStatus === "checking" ||
+                  updaterStatus === "downloading" ||
+                  updaterStatus === "installing"
+                }
+              >
+                {updaterStatus === "checking"
+                  ? "Checking…"
+                  : "Check for updates"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`${ui.button} ${ui.ghost}`}
+                onClick={() => void openReleases()}
+              >
+                Open releases
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className={styles.help}>
+          The Windows installer and the Linux AppImage update themselves. The{" "}
+          <code>.deb</code> and portable <code>.zip</code> update manually from{" "}
+          <button
+            type="button"
+            className={styles.inlineLink}
+            onClick={() => void openReleases()}
+          >
+            GitHub Releases
+          </button>
+          .
+        </p>
       </section>
 
       {/* About */}

@@ -6,13 +6,17 @@ import { NowPlaying } from "./components/NowPlaying";
 import { PlayerBar } from "./components/PlayerBar";
 import { QueuePanel } from "./components/QueuePanel";
 import { Sidebar } from "./components/Sidebar";
+import { TitleBar } from "./components/TitleBar";
 import { SongContextMenu } from "./components/ui/SongContextMenu";
 import { ToastHost } from "./components/ui/ToastHost";
+import { UpdateDialog } from "./components/ui/UpdateDialog";
+import { WindowResizeHandles } from "./components/ui/WindowResizeHandles";
 import { subscribePlayerEvents } from "./lib/ipc";
 import type { RepeatMode } from "./lib/types";
 import { usePlayer } from "./store/player";
 import { useSession } from "./store/session";
 import { isConfigured, useSettings } from "./store/settings";
+import { useUpdater } from "./store/updater";
 import styles from "./styles/layout.module.css";
 import ui from "./styles/ui.module.css";
 import { AlbumView } from "./views/AlbumView";
@@ -83,6 +87,8 @@ function useAppBootstrap() {
   const restoreSession = usePlayer((state) => state.restoreSession);
   const loadSession = useSession((state) => state.load);
   const accent = useSettings((state) => state.settings?.accent ?? "blue");
+  const loaded = useSettings((state) => state.loaded);
+  const loadVersion = useUpdater((state) => state.loadVersion);
 
   useEffect(() => {
     async function boot() {
@@ -95,6 +101,23 @@ function useAppBootstrap() {
     }
     void boot();
   }, [loadSettings, initPlayer, loadSession, restoreSession]);
+
+  useEffect(() => {
+    void loadVersion();
+  }, [loadVersion]);
+
+  // Silent update check a few seconds after launch. Delayed so it never
+  // competes with restoring the library/session at startup.
+  useEffect(() => {
+    if (!import.meta.env.PROD || !loaded) return;
+    const timer = window.setTimeout(() => {
+      const settings = useSettings.getState().settings;
+      if (settings?.autoUpdate !== false) {
+        void useUpdater.getState().check();
+      }
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [loaded]);
 
   useEffect(() => {
     const unsubscribe = subscribePlayerEvents({
@@ -169,8 +192,8 @@ function useAppBootstrap() {
 
 function Splash() {
   return (
-    <div className={styles.splash}>
-      <div className={styles.splashMark} aria-hidden="true">
+    <div className={styles.splash} data-tauri-drag-region>
+      <div className={styles.splashMark} aria-hidden="true" data-tauri-drag-region>
         <span />
         <span />
         <span />
@@ -196,6 +219,7 @@ export default function App() {
       <div
         className={`${styles.app} ${nowPlayingOpen ? styles.appImmersive : ""}`}
       >
+        <TitleBar />
         <Sidebar />
         <main className={styles.main}>
           <Routes>
@@ -226,6 +250,8 @@ export default function App() {
       <QueuePanel />
       <SongContextMenu />
       <ToastHost />
+      <UpdateDialog />
+      <WindowResizeHandles />
 
       {error ? (
         <div className={styles.errorToast} role="alert">

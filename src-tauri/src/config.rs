@@ -81,6 +81,10 @@ pub struct Settings {
     /// Last active fullscreen sidebar tab: "queue", "lyrics" or "info".
     pub fullscreen_sidebar_panel: String,
 
+    // --- updates ---
+    /// Check for a new release shortly after launch.
+    pub auto_update: bool,
+
     // --- listen together ---
     pub session_name: String,
     pub session_relay_url: String,
@@ -123,6 +127,8 @@ impl Default for Settings {
             fullscreen_blur: "medium".into(),
             fullscreen_sidebar_open: true,
             fullscreen_sidebar_panel: "queue".into(),
+
+            auto_update: true,
 
             session_name: String::new(),
             session_relay_url: "ws://127.0.0.1:8787".into(),

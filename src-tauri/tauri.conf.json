@@ -19,7 +19,7 @@
         "minWidth": 1020,
         "minHeight": 640,
         "resizable": true,
-        "decorations": true,
+        "decorations": false,
         "center": true,
         "theme": "Dark",
         "backgroundColor": "#0a0f1e"
@@ -46,6 +46,19 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/highimnoah/hush/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0QUU3OUEyODJBNDA0RUMKUldUc0JLU0Nvbm11MUZnL0JjQS9TNW01enFWeXdPVU5PQXRDQ0ZNYWhpanZxU2JKVWhWeklBZVAK",
+      "dialog": false,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

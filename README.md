@@ -15,6 +15,8 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Native GStreamer playback: FLAC, MP3, AAC/M4A, Opus, Ogg Vorbis, WAV (ALAC with `gst-libav`).
 - Gapless album playback (next track preloaded in Rust) with an optional short fade between tracks.
 - Linux and Windows 10/11 x64 builds; the Windows installer bundles the GStreamer runtime.
+- Borderless, theme-matched window controls (minimize, maximize/restore, close) in the titlebar and the fullscreen view, with drag and double-click-to-maximize support.
+- Automatic update checks (opt-out) for the Windows installer and the Linux AppImage, with in-app download progress and restart-to-apply.
 - ReplayGain: Off / Track / Album, applied with GStreamer `rgvolume`, optional pre-amp.
 - Real waveform seek bar in the player bar and the fullscreen view (decoded in Rust and cached); the bar is hidden while the fullscreen view is open so only one timeline is visible.
 - Fullscreen Now Playing view with a toggleable sidebar (queue, lyrics, technical info), blurred cover art or an audio-reactive visualizer backdrop, and an in-view settings menu.
@@ -106,12 +108,13 @@ hush-tauri/
 │   ├── App.tsx                  # shell, routing, event wiring, shortcuts
 │   ├── MiniApp.tsx              # compact mini-player window
 │   ├── components/
-│   │   ├── Sidebar.tsx · PlayerBar.tsx · NowPlaying.tsx (fullscreen) · QueuePanel.tsx
+│   │   ├── TitleBar.tsx · Sidebar.tsx · PlayerBar.tsx · NowPlaying.tsx (fullscreen) · QueuePanel.tsx
 │   │   ├── library/             TrackList · AlbumCard · ArtistCard · PlaylistCard
 │   │   └── ui/                  Artwork · Slider · WaveformSeek · Visualizer · LyricsPanel ·
-│   │                            Dialog · ToastHost · ExplicitBadge · Switch · states · context menu
+│   │                            Dialog · ToastHost · UpdateDialog · WindowControls ·
+│   │                            ExplicitBadge · Switch · states · context menu
 │   ├── views/                   Home · Search · Together · Artists · Albums · Genres · Playlists · Liked · Settings
-│   ├── store/                   player.ts · library.ts · session.ts · settings.ts · contextMenu.ts
+│   ├── store/                   player.ts · library.ts · session.ts · settings.ts · updater.ts · contextMenu.ts
 │   ├── lib/                     ipc.ts · types.ts · format.ts · waveform.ts · useAsync.ts · hooks.ts
 │   └── styles/                  tokens.css · global.css · *.module.css
 ├── hush-sync/                   # self-hosted Listen Together relay
@@ -275,6 +278,62 @@ git push origin v0.1.0
 The workflow derives the app version from the tag (dropping the leading `v`), creates a **draft** GitHub release and attaches the artifacts. Review the draft, then publish it. For a manual run, use **Actions → Release → Run workflow** and enter an existing tag.
 
 Windows builds are unsigned, so SmartScreen may warn on first launch. Code signing can be added later through the Tauri Windows signing options.
+
+### Updater signing
+
+App updates are signed with a minisign key. The **public** key lives in
+`src-tauri/tauri.conf.json` under `plugins.updater.pubkey`. The **private** key
+must be stored in the repository secrets:
+
+- `TAURI_SIGNING_PRIVATE_KEY` — the contents of the private key file
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — its password, or empty if it has none
+
+This repository is already configured with a generated keypair. The **private**
+key is at `~/.tauri/hush.key` on the development machine. To rotate it, generate
+a new pair and update both this public key and the secret (existing installs
+will need one manual update):
+
+```bash
+npx tauri signer generate -w ~/.tauri/hush.key
+```
+
+Then add the **private** key to the repository:
+
+- GitHub → **Settings → Secrets and variables → Actions → New repository secret**
+- Name: `TAURI_SIGNING_PRIVATE_KEY`
+- Value: the entire contents of `~/.tauri/hush.key`
+
+The generated key has no password, so `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` can
+be left unset. Keep the private key safe: losing it means existing installs can
+no longer verify or apply updates.
+
+Local production builds also need the key exported:
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/hush.key)"
+npm run tauri build
+```
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$HOME\.tauri\hush.key" -Raw
+npm run tauri build
+```
+
+If you only need a local binary and not installers, use
+`npm run tauri build -- --no-bundle` (this skips bundling and signing).
+
+`tauri-action` writes the `.sig` files and
+`latest.json` into the release. Draft releases are invisible to the updater,
+so **publishing the draft is the rollout step**. The app checks:
+
+```
+https://github.com/highimnoah/hush/releases/latest/download/latest.json
+```
+
+Automatic updates work for the Windows NSIS installer and the Linux AppImage.
+The `.deb` package is updated manually from GitHub Releases. The first release
+that contains the updater must itself be installed by hand; every release
+after that can self-update.
 
 ---
 
@@ -519,6 +578,8 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - **Listen Together** requires a running `hush-sync` relay, the same Navidrome server for all participants, and host-only control (no collaborative queue yet). Sync is music-grade, not video-grade.
 - **Media controls** are MPRIS on Linux and SMTC on Windows. SMTC is bound to the main window handle: closing the main window while the mini player keeps the app alive unregisters the overlay until the main window is shown again. `souvlaki` cover art is passed only for HTTPS URLs (token-bearing query strings never go over plain HTTP).
 - **Windows** releases are unsigned and target Windows 10/11 x64 with WebView2. The Windows runtime and the Linux AppImage bundle GStreamer (LGPL; sources and license at [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/)); the Linux `.deb` uses the distribution's GStreamer packages.
+- **Automatic updates** are supported for the Windows NSIS installer and the Linux AppImage. The `.deb` and the Windows portable `.zip` must be updated manually from GitHub Releases. Updates roll out only when a draft release is published, and the first release containing the updater must be installed by hand. On Windows the installer closes hush while applying the update; reopen hush when it finishes. On Linux the AppImage relaunches automatically.
+- The main window is **borderless**, so Windows 11 snap layouts (hovering the Maximize button) are not available, and some Linux compositors may not draw a drop shadow. Maximize/restore, dragging and double-click-to-maximize all work normally.
 - **Transcoding** should be disabled on the server to keep ReplayGain metadata and quality.
 - Linux (WebKitGTK/GTK3/GStreamer/AppIndicator) remains the primary development target. Windows x64 releases are built in CI with a bundled GStreamer runtime; macOS is not packaged yet.
 
@@ -561,5 +622,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Listen together: create a session, join with a second client (or `#/together?code=…`), and confirm both sides show the same now-playing and participants.
 - [ ] Host play/pause/seek/skip mirrors on the guest; the sync badge settles to “In sync”.
 - [ ] Host leaves → the relay promotes another member; relay down → clear error state.
+- [ ] Custom titlebar: drag the window, double-click to maximize/restore, resize from the edges/corners, and verify minimize/maximize/close; the maximize icon flips when the window is restored or maximized. The controls are also reachable in the fullscreen Now Playing view.
+- [ ] Updates: Settings shows the current version; a manual check reports up to date or a network error gracefully; the startup check respects the "Check automatically" toggle; on a published release, download progress and "Restart now" work.
 - [ ] Keyboard shortcuts work; focus rings visible; contrast is comfortable.
 - [ ] Launch on X11 and Wayland; verify the NVIDIA software-rendering fallback.

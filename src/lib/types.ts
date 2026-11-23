@@ -147,6 +147,7 @@ export interface Settings {
   fullscreenBlur: FullscreenBlur;
   fullscreenSidebarOpen: boolean;
   fullscreenSidebarPanel: FullscreenPanel;
+  autoUpdate: boolean;
   sessionName: string;
   sessionRelayUrl: string;
   windowWidth?: number | null;

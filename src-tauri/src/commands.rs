@@ -398,6 +398,21 @@ pub fn set_playback_modes(state: State<'_, AppState>, shuffle: bool, repeat: Rep
     state.mpris.set_repeat(repeat);
 }
 
+/// Tauri's updater can replace AppImages and Windows installers, but not
+/// Debian/RPM packages. The AppImage runtime exports `APPIMAGE`; use it to
+/// avoid offering a download that cannot be applied to a `.deb` install.
+#[tauri::command]
+pub fn updater_supported() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("APPIMAGE").is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Window / app control
 // ---------------------------------------------------------------------------

@@ -59,9 +59,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: "hush ${{ inputs.tag || github.ref_name }}"
+          includeUpdaterJson: true
           releaseBody: |
             Downloads for hush.
 
@@ -72,6 +75,10 @@ jobs:
             **Windows:** NSIS installer (`.exe`) and a portable `.zip`.
             Windows 10/11 with the WebView2 runtime is required. The GStreamer
             runtime is bundled; media keys/MPRIS are Linux-only.
+
+            Existing installs can update in-app from Settings (Windows
+            installer and Linux AppImage). The portable `.zip` and `.deb`
+            update manually.
           releaseDraft: true
           prerelease: false
           args: --bundles deb,appimage -v
@@ -167,9 +174,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: "hush ${{ inputs.tag || github.ref_name }}"
+          includeUpdaterJson: true
           releaseBody: |
             Downloads for hush.
 
@@ -180,6 +190,10 @@ jobs:
             **Windows:** NSIS installer (`.exe`) and a portable `.zip`.
             Windows 10/11 with the WebView2 runtime is required. The GStreamer
             runtime is bundled; media keys/MPRIS are Linux-only.
+
+            Existing installs can update in-app from Settings (Windows
+            installer and Linux AppImage). The portable `.zip` and `.deb`
+            update manually.
           releaseDraft: true
           prerelease: false
           args: --bundles nsis

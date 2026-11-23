@@ -77,15 +77,6 @@ export function Sidebar() {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.brand}>
-        <div className={styles.brandMark} aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-        <span className={styles.brandName}>hush</span>
-      </div>
-
       <nav className={styles.nav} aria-label="Primary">
         {listenItems.map((item) => (
           <NavItem key={item.to} {...item} />

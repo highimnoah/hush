@@ -89,6 +89,15 @@
   align-items: center;
   gap: 6px;
 }
+.winDivider {
+  width: 1px;
+  height: 18px;
+  margin: 0 5px;
+  background: var(--border-strong);
+}
+.winControls {
+  margin-right: -10px;
+}
 .ctrlBtn {
   display: flex;
   align-items: center;

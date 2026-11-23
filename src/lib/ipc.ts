@@ -33,6 +33,7 @@ import type {
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
+  updaterSupported: () => invoke<boolean>("updater_supported"),
   updateSettings: (settings: Settings) =>
     invoke<Settings>("update_settings", { settings }),
   testConnection: (settings: Settings) =>

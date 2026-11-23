@@ -1,7 +1,7 @@
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) var(--player-h);
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr) var(--player-h);
   height: 100vh;
   height: 100dvh;
   background: var(--bg);
@@ -9,56 +9,168 @@
 
 /* Fullscreen is open: the player bar is unmounted and its row collapses. */
 .appImmersive {
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
 }
 
-.sidebar {
-  grid-column: 1;
+/* ---------- Borderless titlebar ---------- */
+.titleBar {
+  grid-column: 1 / -1;
   grid-row: 1;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-  padding: 20px 16px 16px;
-  background: var(--bg-deep);
-  border-right: 1px solid var(--border);
-}
-
-.brand {
-  display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 4px 10px 10px;
+  height: var(--titlebar-h);
+  padding: 0 6px 0 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
   user-select: none;
 }
-.brandMark {
+.titleBrand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.titleBrandMark {
   display: flex;
   align-items: flex-end;
-  gap: 2.5px;
-  height: 20px;
+  gap: 2px;
+  height: 15px;
 }
-.brandMark span {
-  width: 3.5px;
+.titleBrandMark span {
+  width: 3px;
   border-radius: 2px;
   background: var(--accent);
 }
-.brandMark span:nth-child(1) {
-  height: 11px;
+.titleBrandMark span:nth-child(1) {
+  height: 9px;
   opacity: 0.75;
 }
-.brandMark span:nth-child(2) {
-  height: 20px;
+.titleBrandMark span:nth-child(2) {
+  height: 15px;
 }
-.brandMark span:nth-child(3) {
-  height: 14px;
+.titleBrandMark span:nth-child(3) {
+  height: 11px;
   opacity: 0.9;
 }
-.brandName {
-  font-size: 21px;
+.titleBrandName {
+  font-size: 15px;
   font-weight: 720;
   letter-spacing: -0.035em;
   text-transform: lowercase;
   color: var(--text);
+}
+.titleDrag {
+  flex: 1;
+  align-self: stretch;
+}
+
+.winControls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.winBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: background var(--t), color var(--t);
+}
+.winBtn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.winBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.winBtnClose:hover {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+
+/* Borderless window resize handles (edges + corners). */
+.resizeHandles {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+.resizeHandle {
+  position: absolute;
+  pointer-events: auto;
+}
+.resizeN {
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 4px;
+  cursor: n-resize;
+}
+.resizeS {
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 4px;
+  cursor: s-resize;
+}
+.resizeE {
+  right: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  cursor: e-resize;
+}
+.resizeW {
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  cursor: w-resize;
+}
+.resizeNE {
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  cursor: ne-resize;
+}
+.resizeNW {
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  cursor: nw-resize;
+}
+.resizeSE {
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  cursor: se-resize;
+}
+.resizeSW {
+  bottom: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  cursor: sw-resize;
+}
+
+.sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 18px 16px 16px;
+  background: var(--bg-deep);
+  border-right: 1px solid var(--border);
 }
 
 .nav {
@@ -154,7 +266,7 @@
 
 .main {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
   min-height: 0;
   overflow-y: auto;
   position: relative;
@@ -163,7 +275,7 @@
 
 .playerSlot {
   grid-column: 1 / -1;
-  grid-row: 2;
+  grid-row: 3;
 }
 
 .splash {
