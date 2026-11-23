@@ -78,3 +78,21 @@ export function formatTotalDuration(seconds: number | undefined | null): string 
 export function trackKey(id: string, index: number): string {
   return `${id}:${index}`;
 }
+
+const EXPLICIT_EMOJI = "\u{1F174}"; // 🅴
+
+/**
+ * True when the server flags the item as explicit, or when the title uses the
+ * common `🅴` suffix workaround (older servers without `explicitStatus`).
+ */
+export function isExplicit(
+  item:
+    | { explicitStatus?: string | null; title?: string | null }
+    | null
+    | undefined,
+): boolean {
+  if (!item) return false;
+  if ((item.explicitStatus ?? "").toLowerCase() === "explicit") return true;
+  const title = item.title ?? "";
+  return title.includes(EXPLICIT_EMOJI);
+}

@@ -23,6 +23,14 @@ pub enum RepeatMode {
     All,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransitionMode {
+    #[default]
+    Gapless,
+    Fade,
+}
+
 /// Persisted application settings. Stored as JSON in the app config directory.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -44,6 +52,12 @@ pub struct Settings {
     pub replaygain_preamp: f64,
     pub volume: f64,
     pub muted: bool,
+    /// Restore the saved queue and start playing automatically on launch.
+    pub resume_playback: bool,
+    /// Track boundary behaviour: hard gapless switch or a short fade.
+    pub transition_mode: TransitionMode,
+    /// Fade length in seconds (1–8) for `transition_mode = "fade"`.
+    pub fade_seconds: u32,
 
     // --- discord ---
     pub discord_enabled: bool,
@@ -56,6 +70,16 @@ pub struct Settings {
 
     // --- appearance / misc ---
     pub accent: String,
+    /// Fullscreen ("now playing") backdrop: "art", "visualizer" or "dim".
+    pub fullscreen_background: String,
+    /// Fullscreen visualizer style: "bars" or "wave".
+    pub fullscreen_visualizer: String,
+    /// Fullscreen cover blur intensity: "low", "medium" or "high".
+    pub fullscreen_blur: String,
+    /// Whether the fullscreen sidebar was visible last time.
+    pub fullscreen_sidebar_open: bool,
+    /// Last active fullscreen sidebar tab: "queue", "lyrics" or "info".
+    pub fullscreen_sidebar_panel: String,
 
     // --- listen together ---
     pub session_name: String,
@@ -81,6 +105,9 @@ impl Default for Settings {
             replaygain_preamp: 0.0,
             volume: 0.8,
             muted: false,
+            resume_playback: false,
+            transition_mode: TransitionMode::Gapless,
+            fade_seconds: 3,
 
             discord_enabled: false,
             discord_client_id: "1573866319844212849".into(),
@@ -91,6 +118,11 @@ impl Default for Settings {
             discord_use_cover: true,
 
             accent: "blue".into(),
+            fullscreen_background: "art".into(),
+            fullscreen_visualizer: "bars".into(),
+            fullscreen_blur: "medium".into(),
+            fullscreen_sidebar_open: true,
+            fullscreen_sidebar_panel: "queue".into(),
 
             session_name: String::new(),
             session_relay_url: "ws://127.0.0.1:8787".into(),

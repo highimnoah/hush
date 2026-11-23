@@ -470,11 +470,12 @@ impl Controller {
                 bit_depth: None,
                 sampling_rate: None,
                 channel_count: None,
+                explicit_status: None,
             };
 
             let settings = self.config.get();
             if let Err(err) =
-                crate::playback::load_track(&self.player, &settings, &self.http, info)
+                crate::playback::load_track(&self.player, &settings, &self.http, info, 0.0)
             {
                 self.error = Some(err.to_string());
                 self.loading_track = None;

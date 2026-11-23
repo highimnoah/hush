@@ -23,9 +23,18 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 
 #[tauri::command]
 pub fn update_settings(state: State<'_, AppState>, settings: Settings) -> Result<Settings> {
+    let previous = state.config.get();
     let saved = state.config.set(settings)?;
+    // A different server or user makes the saved queue meaningless.
+    if previous.server_url != saved.server_url || previous.username != saved.username {
+        let _ = state.session_store.clear();
+    }
     state.player.send(Command::SetReplayGain(saved.replaygain));
     state.player.send(Command::SetPreamp(saved.replaygain_preamp));
+    state.player.send(Command::SetTransition(
+        saved.transition_mode,
+        saved.fade_seconds as f64,
+    ));
     state.discord.configure(DiscordConfig::from(&saved));
     Ok(saved)
 }
@@ -111,6 +120,87 @@ pub async fn get_random_songs(
 }
 
 #[tauri::command]
+pub async fn get_lyrics(state: State<'_, AppState>, id: String) -> Result<Lyrics> {
+    build_server(&state)?.lyrics(&id).await
+}
+
+#[tauri::command]
+pub async fn get_genres(state: State<'_, AppState>) -> Result<Vec<Genre>> {
+    build_server(&state)?.genres().await
+}
+
+#[tauri::command]
+pub async fn get_songs_by_genre(
+    state: State<'_, AppState>,
+    genre: String,
+    size: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<Song>> {
+    build_server(&state)?
+        .songs_by_genre(&genre, size.unwrap_or(200), offset.unwrap_or(0))
+        .await
+}
+
+#[tauri::command]
+pub async fn get_albums_by_genre(
+    state: State<'_, AppState>,
+    genre: String,
+    size: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<Album>> {
+    build_server(&state)?
+        .albums_by_genre(&genre, size.unwrap_or(50), offset.unwrap_or(0))
+        .await
+}
+
+#[tauri::command]
+pub async fn create_playlist(
+    state: State<'_, AppState>,
+    name: String,
+    song_ids: Vec<String>,
+) -> Result<PlaylistDetail> {
+    build_server(&state)?
+        .create_playlist(Some(&name), None, &song_ids)
+        .await
+}
+
+#[tauri::command]
+pub async fn replace_playlist(
+    state: State<'_, AppState>,
+    id: String,
+    song_ids: Vec<String>,
+) -> Result<PlaylistDetail> {
+    build_server(&state)?
+        .create_playlist(None, Some(&id), &song_ids)
+        .await
+}
+
+#[tauri::command]
+pub async fn update_playlist(
+    state: State<'_, AppState>,
+    id: String,
+    name: Option<String>,
+    comment: Option<String>,
+    song_ids_to_add: Vec<String>,
+    song_indexes_to_remove: Vec<u32>,
+) -> Result<()> {
+    build_server(&state)?
+        .update_playlist(
+            &id,
+            name.as_deref(),
+            comment.as_deref(),
+            &song_ids_to_add,
+            &song_indexes_to_remove,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn delete_playlist(state: State<'_, AppState>, id: String) -> Result<()> {
+    build_server(&state)?.delete_playlist(&id).await
+}
+
+#[tauri::command]
 pub fn get_cover_art_url(
     state: State<'_, AppState>,
     id: String,
@@ -143,9 +233,19 @@ pub async fn set_star(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn player_load(state: State<'_, AppState>, track: TrackInfo) -> Result<()> {
+pub fn player_load(
+    state: State<'_, AppState>,
+    track: TrackInfo,
+    start_position: Option<f64>,
+) -> Result<()> {
     let settings = state.config.get();
-    crate::playback::load_track(&state.player, &settings, &state.http, track)
+    crate::playback::load_track(
+        &state.player,
+        &settings,
+        &state.http,
+        track,
+        start_position.unwrap_or(0.0),
+    )
 }
 
 #[tauri::command]
@@ -179,6 +279,49 @@ pub fn player_set_mute(state: State<'_, AppState>, muted: bool) {
 }
 
 #[tauri::command]
+pub fn player_preload(state: State<'_, AppState>, track: TrackInfo) -> Result<()> {
+    let settings = state.config.get();
+    crate::playback::preload_track(&state.player, &settings, &state.http, track)
+}
+
+#[tauri::command]
+pub fn player_clear_preload(state: State<'_, AppState>) {
+    state.player.send(Command::ClearPreload);
+}
+
+#[tauri::command]
+pub fn player_set_levels_enabled(state: State<'_, AppState>, enabled: bool) {
+    state.player.send(Command::SetLevelsEnabled(enabled));
+}
+
+#[tauri::command]
+pub fn player_set_transition(
+    state: State<'_, AppState>,
+    mode: crate::config::TransitionMode,
+    seconds: f64,
+) {
+    state.player.send(Command::SetTransition(mode, seconds));
+}
+
+#[tauri::command]
+pub fn player_fade_out(state: State<'_, AppState>, seconds: f64, pause_after: bool) {
+    state.player.send(Command::FadeOut {
+        seconds,
+        pause_after,
+    });
+}
+
+#[tauri::command]
+pub fn player_sleep_at_end(state: State<'_, AppState>, fade_seconds: f64) {
+    state.player.send(Command::SleepAtTrackEnd { fade_seconds });
+}
+
+#[tauri::command]
+pub fn player_cancel_sleep(state: State<'_, AppState>) {
+    state.player.send(Command::CancelSleep);
+}
+
+#[tauri::command]
 pub fn player_set_replaygain(state: State<'_, AppState>, mode: crate::config::ReplayGainMode) {
     let mut settings = state.config.get();
     settings.replaygain = mode;
@@ -199,6 +342,30 @@ pub fn get_current_track(state: State<'_, AppState>) -> Option<TrackInfo> {
 #[tauri::command]
 pub fn get_waveform(state: State<'_, AppState>, id: String) -> Option<Vec<f32>> {
     state.waveforms.get(&id)
+}
+
+// ---------------------------------------------------------------------------
+// Resumable player session
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_player_session(
+    state: State<'_, AppState>,
+) -> Option<crate::session_state::PersistedPlayerState> {
+    state.session_store.get()
+}
+
+#[tauri::command]
+pub fn save_player_session(
+    state: State<'_, AppState>,
+    session: crate::session_state::PersistedPlayerState,
+) -> Result<()> {
+    state.session_store.set(session)
+}
+
+#[tauri::command]
+pub fn clear_player_session(state: State<'_, AppState>) -> Result<()> {
+    state.session_store.clear()
 }
 
 // ---------------------------------------------------------------------------

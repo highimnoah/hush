@@ -8,6 +8,7 @@ pub mod playback;
 pub mod player;
 pub mod server;
 pub mod session;
+pub mod session_state;
 mod tray;
 
 use std::sync::Arc;
@@ -20,6 +21,7 @@ use mpris::MprisHandle;
 use player::waveform::WaveformHandle;
 use player::PlayerHandle;
 use session::SessionHandle;
+use session_state::SessionStore;
 
 /// Shared application state managed by Tauri.
 pub struct AppState {
@@ -29,6 +31,7 @@ pub struct AppState {
     pub mpris: MprisHandle,
     pub waveforms: WaveformHandle,
     pub session: SessionHandle,
+    pub session_store: Arc<SessionStore>,
     pub http: reqwest::Client,
 }
 
@@ -48,6 +51,7 @@ pub fn run() {
 
             let config_dir = app.path().app_config_dir()?;
             config::ensure_config_dir(&config_dir)?;
+            let session_store = Arc::new(SessionStore::load(config_dir.clone()));
             let config = Arc::new(ConfigStore::load(config_dir));
             let settings = config.get();
 
@@ -68,6 +72,8 @@ pub fn run() {
                 settings.muted,
                 settings.replaygain,
                 settings.replaygain_preamp,
+                settings.transition_mode,
+                settings.fade_seconds as f64,
             );
 
             let session = SessionHandle::spawn(
@@ -88,6 +94,7 @@ pub fn run() {
                 mpris,
                 waveforms,
                 session,
+                session_store,
                 http,
             });
 
@@ -118,6 +125,14 @@ pub fn run() {
             commands::search,
             commands::get_starred,
             commands::get_random_songs,
+            commands::get_lyrics,
+            commands::get_genres,
+            commands::get_songs_by_genre,
+            commands::get_albums_by_genre,
+            commands::create_playlist,
+            commands::replace_playlist,
+            commands::update_playlist,
+            commands::delete_playlist,
             commands::get_cover_art_url,
             commands::get_waveform,
             commands::scrobble,
@@ -129,6 +144,13 @@ pub fn run() {
             commands::player_seek,
             commands::player_set_volume,
             commands::player_set_mute,
+            commands::player_preload,
+            commands::player_clear_preload,
+            commands::player_set_levels_enabled,
+            commands::player_set_transition,
+            commands::player_fade_out,
+            commands::player_sleep_at_end,
+            commands::player_cancel_sleep,
             commands::player_set_replaygain,
             commands::get_player_state,
             commands::get_current_track,
@@ -142,6 +164,9 @@ pub fn run() {
             commands::session_join,
             commands::session_leave,
             commands::session_get_state,
+            commands::get_player_session,
+            commands::save_player_session,
+            commands::clear_player_session,
         ])
         .build(tauri::generate_context!())
         .expect("error while building hush");

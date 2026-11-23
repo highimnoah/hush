@@ -32,6 +32,10 @@ hush-session-protocol = { path = "../hush-sync/protocol" }
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris-server = { version = "0.11", features = ["tokio"] }
 
+# System Media Transport Controls (media overlay + hardware keys) on Windows.
+[target.'cfg(target_os = "windows")'.dependencies]
+souvlaki = "0.9"
+
 [profile.release]
 opt-level = "s"
 lto = true

@@ -4,6 +4,7 @@ import {
   Heart,
   Home,
   ListMusic,
+  Music2,
   Search,
   Settings,
   Users,
@@ -30,6 +31,7 @@ const listenItems: NavEntry[] = [
 const libraryItems: NavEntry[] = [
   { to: "/artists", label: "Artists", icon: Users },
   { to: "/albums", label: "Albums", icon: Disc3 },
+  { to: "/genres", label: "Genres", icon: Music2 },
   { to: "/playlists", label: "Playlists", icon: ListMusic },
   { to: "/liked", label: "Liked", icon: Heart },
 ];

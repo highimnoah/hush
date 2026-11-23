@@ -1,12 +1,15 @@
-import { ArrowRight, Server } from "lucide-react";
+import { ArrowRight, Play, Server } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import type { Album } from "../lib/types";
+import type { Album, SearchResults } from "../lib/types";
+import { formatTime } from "../lib/format";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import { useAsync, type AsyncState } from "../lib/useAsync";
+import { usePlayer } from "../store/player";
 import { AlbumCard } from "../components/library/AlbumCard";
 import { TrackList } from "../components/library/TrackList";
+import { Artwork } from "../components/ui/Artwork";
 import { AsyncContent } from "../components/ui/AsyncContent";
 import { ErrorState } from "../components/ui/ErrorState";
 import { CardSkeletonGrid } from "../components/ui/States";
@@ -56,6 +59,48 @@ function AlbumShelf({
   );
 }
 
+function ResumeCard() {
+  const track = usePlayer((state) => state.track);
+  const restoredPosition = usePlayer((state) => state.restoredPosition);
+  const position = usePlayer((state) => state.position);
+  const duration = usePlayer((state) => state.duration);
+  const resume = usePlayer((state) => state.resumeRestored);
+
+  if (!track || restoredPosition == null) return null;
+
+  const total = duration || track.duration || 0;
+  const subtitle = [track.artist, track.album].filter(Boolean).join(" · ");
+
+  return (
+    <section className={styles.resumeCard}>
+      <div className={styles.resumeArt}>
+        <Artwork
+          src={track.coverUrl}
+          coverId={track.coverArt}
+          size={160}
+          alt={track.album ?? ""}
+        />
+      </div>
+      <div className={styles.resumeMain}>
+        <div className={styles.resumeLabel}>Continue listening</div>
+        <div className={styles.resumeTitle}>{track.title}</div>
+        <div className={styles.resumeMeta}>
+          {subtitle ? `${subtitle} · ` : ""}
+          {formatTime(position)} / {formatTime(total)}
+        </div>
+      </div>
+      <button
+        type="button"
+        className={`${ui.button} ${ui.primary}`}
+        onClick={() => resume()}
+      >
+        <Play size={15} fill="currentColor" strokeWidth={0} />
+        Resume
+      </button>
+    </section>
+  );
+}
+
 function ConnectPrompt() {
   return (
     <div className={styles.connectWrap}>
@@ -91,6 +136,14 @@ export function Home() {
     () => (configured ? api.getRandomSongs(10) : Promise.resolve([])),
     [configured],
   );
+  const mostPlayed = useAsync<Album[]>(
+    () => (configured ? api.getAlbums("frequent", 12) : Promise.resolve([])),
+    [configured],
+  );
+  const starred = useAsync<SearchResults | null>(
+    () => (configured ? api.getStarred() : Promise.resolve(null)),
+    [configured],
+  );
 
   if (!configured) return <ConnectPrompt />;
 
@@ -103,8 +156,22 @@ export function Home() {
         </div>
       </div>
 
+      <ResumeCard />
+
       <AlbumShelf title="Recently added" state={newest} allLink="/albums" />
       <AlbumShelf title="Recently played" state={recent} allLink="/albums" />
+      <AlbumShelf title="Most played" state={mostPlayed} />
+      {starred.loading || (starred.data?.albums.length ?? 0) > 0 ? (
+        <AlbumShelf
+          title="Starred albums"
+          state={{
+            data: starred.data?.albums ?? null,
+            loading: starred.loading,
+            error: starred.error,
+            reload: starred.reload,
+          }}
+        />
+      ) : null}
 
       <section className={styles.section}>
         <div className={styles.sectionHead}>

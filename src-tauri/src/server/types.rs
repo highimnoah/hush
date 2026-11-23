@@ -49,6 +49,22 @@ where
     Ok(v.as_ref().and_then(json_to_f64))
 }
 
+/// Lenient string-ish deserializer. Some servers emit explicit flags as
+/// booleans or numbers instead of the OpenSubsonic "explicit"/"clean" string.
+pub fn opt_string_lossy<'de, D>(deserializer: D) -> std::result::Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Option::<Value>::deserialize(deserializer)?;
+    Ok(v.and_then(|value| match value {
+        Value::String(s) => Some(s),
+        Value::Bool(true) => Some("explicit".to_string()),
+        Value::Bool(false) => Some("clean".to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Song {
@@ -96,6 +112,9 @@ pub struct Song {
     pub starred: Option<String>,
     #[serde(default, deserialize_with = "opt_u32")]
     pub play_count: Option<u32>,
+    /// OpenSubsonic/Navidrome explicit content status: "explicit", "clean" or "".
+    #[serde(default, deserialize_with = "opt_string_lossy")]
+    pub explicit_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -123,6 +142,20 @@ pub struct Album {
     pub created: Option<String>,
     #[serde(default)]
     pub starred: Option<String>,
+    /// OpenSubsonic/Navidrome explicit content status for the album.
+    #[serde(default, deserialize_with = "opt_string_lossy")]
+    pub explicit_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Genre {
+    #[serde(default)]
+    pub value: String,
+    #[serde(default, deserialize_with = "opt_u32")]
+    pub song_count: Option<u32>,
+    #[serde(default, deserialize_with = "opt_u32")]
+    pub album_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -195,6 +228,29 @@ pub struct SearchResults {
     pub albums: Vec<Album>,
     #[serde(default)]
     pub songs: Vec<Song>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Lyrics {
+    #[serde(default)]
+    pub plain: Option<String>,
+    #[serde(default)]
+    pub synced: Option<Vec<LyricLine>>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub artist: Option<String>,
+    #[serde(default)]
+    pub album: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricLine {
+    /// Line start time in milliseconds.
+    pub start_ms: u64,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

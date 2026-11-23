@@ -4,6 +4,12 @@ export type ReplayGainMode = "off" | "track" | "album";
 export type RepeatMode = "off" | "one" | "all";
 export type PlaybackStatus = "stopped" | "playing" | "paused";
 export type StarKind = "song" | "album";
+export type TransitionMode = "gapless" | "fade";
+export type SleepMode = "minutes" | "endOfTrack" | "endOfQueue";
+export type FullscreenBackground = "art" | "visualizer" | "dim";
+export type FullscreenVisualizer = "bars" | "wave";
+export type FullscreenBlur = "low" | "medium" | "high";
+export type FullscreenPanel = "queue" | "lyrics" | "info";
 
 export interface Song {
   id: string;
@@ -28,6 +34,8 @@ export interface Song {
   size?: number;
   starred?: string;
   playCount?: number;
+  /** OpenSubsonic/Navidrome explicit content status: "explicit" | "clean" | "". */
+  explicitStatus?: string;
 }
 
 export interface Album {
@@ -42,6 +50,13 @@ export interface Album {
   genre?: string;
   created?: string;
   starred?: string;
+  explicitStatus?: string;
+}
+
+export interface Genre {
+  value: string;
+  songCount?: number;
+  albumCount?: number;
 }
 
 export interface Artist {
@@ -86,6 +101,19 @@ export interface SearchResults {
   songs: Song[];
 }
 
+export interface LyricLine {
+  startMs: number;
+  text: string;
+}
+
+export interface Lyrics {
+  plain: string | null;
+  synced: LyricLine[] | null;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+}
+
 export interface ServerInfo {
   version: string;
   kind?: string;
@@ -103,6 +131,9 @@ export interface Settings {
   replaygainPreamp: number;
   volume: number;
   muted: boolean;
+  resumePlayback: boolean;
+  transitionMode: TransitionMode;
+  fadeSeconds: number;
   discordEnabled: boolean;
   discordClientId: string;
   discordDetails: string;
@@ -111,6 +142,11 @@ export interface Settings {
   discordTimestamps: boolean;
   discordUseCover: boolean;
   accent: string;
+  fullscreenBackground: FullscreenBackground;
+  fullscreenVisualizer: FullscreenVisualizer;
+  fullscreenBlur: FullscreenBlur;
+  fullscreenSidebarOpen: boolean;
+  fullscreenSidebarPanel: FullscreenPanel;
   sessionName: string;
   sessionRelayUrl: string;
   windowWidth?: number | null;
@@ -133,6 +169,7 @@ export interface TrackInfo {
   bitDepth?: number;
   samplingRate?: number;
   channelCount?: number;
+  explicitStatus?: string;
 }
 
 export interface PlayerSnapshot {
@@ -144,6 +181,16 @@ export interface PlayerSnapshot {
   replaygain: ReplayGainMode;
   buffering: boolean;
   track: TrackInfo | null;
+}
+
+export interface PersistedPlayerState {
+  queue: Song[];
+  baseQueue: Song[];
+  currentIndex: number;
+  position: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
+  savedAt: number;
 }
 
 export interface PositionEvent {
@@ -159,6 +206,15 @@ export interface GainEvent {
 export interface WaveformEvent {
   trackId: string;
   peaks: number[];
+}
+
+export interface AdvancedEvent {
+  trackId: string;
+}
+
+export interface LevelsEvent {
+  peak: number;
+  rms: number;
 }
 
 export type SessionRole = "none" | "host" | "guest";

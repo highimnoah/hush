@@ -14,7 +14,11 @@ import { Slider } from "../components/ui/Slider";
 import { ErrorState } from "../components/ui/ErrorState";
 import { Loading } from "../components/ui/States";
 import { Switch } from "../components/ui/Switch";
-import type { ReplayGainMode, Settings } from "../lib/types";
+import type {
+  ReplayGainMode,
+  Settings,
+  TransitionMode,
+} from "../lib/types";
 import { ACCENTS } from "../lib/types";
 import { useSettings } from "../store/settings";
 import styles from "../styles/settings.module.css";
@@ -396,6 +400,67 @@ export function SettingsView() {
               }
             />
           </div>
+
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>Track transitions</div>
+              <div className={styles.rowHint}>
+                Gapless for album listening, or a short fade at each boundary.
+              </div>
+            </div>
+            <div className={ui.segmented}>
+              {(["gapless", "fade"] as TransitionMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`${ui.segment} ${form.transitionMode === mode ? ui.segmentActive : ""}`}
+                  onClick={() => update({ transitionMode: mode })}
+                >
+                  {mode === "gapless" ? "Gapless" : "Fade"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {form.transitionMode === "fade" ? (
+            <div>
+              <div className={styles.rowBetween}>
+                <div>
+                  <div className={styles.rowLabel}>Fade length</div>
+                  <div className={styles.rowHint}>
+                    How long the volume ramp lasts at each track boundary.
+                  </div>
+                </div>
+                <span className={styles.preampValue}>
+                  {form.fadeSeconds}s
+                </span>
+              </div>
+              <Slider
+                value={Math.max(0, form.fadeSeconds - 1)}
+                max={7}
+                step={1}
+                ariaLabel="Fade length"
+                onChange={(value) =>
+                  update({ fadeSeconds: Math.round(value) + 1 })
+                }
+              />
+            </div>
+          ) : null}
+
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>Resume on launch</div>
+              <div className={styles.rowHint}>
+                Restore the last queue, track and position, and start playing
+                automatically.
+              </div>
+            </div>
+            <Switch
+              checked={form.resumePlayback}
+              onChange={(value) => update({ resumePlayback: value })}
+              label="Resume playback on launch"
+            />
+          </div>
         </div>
       </section>
 
@@ -654,8 +719,9 @@ export function SettingsView() {
             software-rendered path.
           </p>
           <p>
-            Media keys and desktop controls are provided through MPRIS, and the
-            system tray offers quick playback controls.
+            Media keys and desktop controls are provided through MPRIS on Linux
+            and System Media Transport Controls on Windows; the system tray
+            offers quick playback controls everywhere.
           </p>
         </div>
       </section>

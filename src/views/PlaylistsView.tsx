@@ -1,7 +1,10 @@
-import { ListMusic } from "lucide-react";
+import { ListMusic, Plus } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { PlaylistCard } from "../components/library/PlaylistCard";
 import { AsyncContent } from "../components/ui/AsyncContent";
+import { PromptDialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { CardSkeletonGrid } from "../components/ui/States";
@@ -9,15 +12,41 @@ import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import type { Playlist } from "../lib/types";
 import { useAsync } from "../lib/useAsync";
+import { usePlayer } from "../store/player";
+import { useToast } from "../store/toast";
 import styles from "../styles/library.module.css";
+import ui from "../styles/ui.module.css";
 
 export function PlaylistsView() {
   const configured = useConfigured();
+  const navigate = useNavigate();
+  const toast = useToast((state) => state.show);
 
   const state = useAsync<Playlist[]>(
     () => (configured ? api.getPlaylists() : Promise.resolve([])),
     [configured],
   );
+
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const handleCreate = async (name: string) => {
+    setBusy(true);
+    try {
+      const created = await api.createPlaylist(name, []);
+      toast(`Created “${name}”`);
+      setPromptOpen(false);
+      if (created.playlist?.id) {
+        navigate(`/playlists/${created.playlist.id}`);
+      } else {
+        state.reload();
+      }
+    } catch (err) {
+      usePlayer.getState().onError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (!configured) return <NotConfigured />;
 
@@ -31,6 +60,16 @@ export function PlaylistsView() {
               ? `${state.data.length} ${state.data.length === 1 ? "playlist" : "playlists"}`
               : "Your playlists"}
           </div>
+        </div>
+        <div className={styles.headActions}>
+          <button
+            type="button"
+            className={`${ui.button} ${ui.primary}`}
+            onClick={() => setPromptOpen(true)}
+          >
+            <Plus size={15} />
+            New playlist
+          </button>
         </div>
       </div>
 
@@ -46,11 +85,22 @@ export function PlaylistsView() {
             <EmptyState
               icon={<ListMusic size={22} />}
               title="No playlists"
-              text="Create playlists in Navidrome and they will appear here."
+              text="Create one with “New playlist”, or add songs from any track's menu."
             />
           )
         }
       </AsyncContent>
+
+      <PromptDialog
+        open={promptOpen}
+        title="New playlist"
+        label="Playlist name"
+        placeholder="Late night"
+        confirmLabel="Create"
+        busy={busy}
+        onConfirm={(name) => void handleCreate(name)}
+        onCancel={() => setPromptOpen(false)}
+      />
     </div>
   );
 }

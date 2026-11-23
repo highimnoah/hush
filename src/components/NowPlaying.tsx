@@ -9,6 +9,8 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -17,17 +19,51 @@ import {
   formatFormat,
   formatSampleRate,
   formatTime,
+  isExplicit,
 } from "../lib/format";
+import type {
+  FullscreenBackground,
+  FullscreenBlur,
+  FullscreenPanel,
+  FullscreenVisualizer,
+  Settings,
+} from "../lib/types";
 import { usePlayer } from "../store/player";
-import styles from "../styles/player.module.css";
+import { useSettings } from "../store/settings";
+import fullscreen from "../styles/fullscreen.module.css";
+import ui from "../styles/ui.module.css";
 import { Artwork } from "./ui/Artwork";
+import { ExplicitBadge } from "./ui/ExplicitBadge";
+import { LyricsPanel } from "./ui/LyricsPanel";
+import { Visualizer } from "./ui/Visualizer";
 import { WaveformSeek } from "./ui/WaveformSeek";
+
+const PANELS: { key: FullscreenPanel; label: string }[] = [
+  { key: "queue", label: "Queue" },
+  { key: "lyrics", label: "Lyrics" },
+  { key: "info", label: "Info" },
+];
+
+const BACKGROUNDS: { key: FullscreenBackground; label: string }[] = [
+  { key: "art", label: "Cover" },
+  { key: "visualizer", label: "Visualizer" },
+  { key: "dim", label: "Dim" },
+];
+
+const VISUALIZERS: { key: FullscreenVisualizer; label: string }[] = [
+  { key: "bars", label: "Bars" },
+  { key: "wave", label: "Wave" },
+];
+
+const BLURS: { key: FullscreenBlur; label: string }[] = [
+  { key: "low", label: "Low" },
+  { key: "medium", label: "Medium" },
+  { key: "high", label: "High" },
+];
 
 export function NowPlaying() {
   const open = usePlayer((state) => state.nowPlayingOpen);
   const setOpen = usePlayer((state) => state.setNowPlayingOpen);
-  const queueOpen = usePlayer((state) => state.queueOpen);
-  const setQueueOpen = usePlayer((state) => state.setQueueOpen);
   const toggleMini = usePlayer((state) => state.toggleMini);
 
   const track = usePlayer((state) => state.track);
@@ -49,16 +85,43 @@ export function NowPlaying() {
   const cycleRepeat = usePlayer((state) => state.cycleRepeat);
   const playIndex = usePlayer((state) => state.playIndex);
 
+  const settings = useSettings((state) => state.settings);
+  const patchSettings = useSettings((state) => state.patch);
+
   const [preview, setPreview] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const background = settings?.fullscreenBackground ?? "art";
+  const visualizer = settings?.fullscreenVisualizer ?? "bars";
+  const blur = settings?.fullscreenBlur ?? "medium";
+  const sidebarOpen = settings?.fullscreenSidebarOpen ?? true;
+  const panel = settings?.fullscreenSidebarPanel ?? "queue";
+
+  const update = (patch: Partial<Settings>) => {
+    void patchSettings(patch).catch((err: unknown) =>
+      usePlayer.getState().onError(String(err)),
+    );
+  };
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      if (settingsOpen) {
+        setSettingsOpen(false);
+        return;
+      }
+      const current = useSettings.getState().settings;
+      if (current?.fullscreenSidebarOpen) {
+        update({ fullscreenSidebarOpen: false });
+        return;
+      }
+      setOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, setOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, settingsOpen, setOpen]);
 
   const info = useMemo(() => {
     if (!track) return [] as { label: string; value: string }[];
@@ -119,26 +182,154 @@ export function NowPlaying() {
   const hasTrack = Boolean(track);
   const elapsed = preview ?? position;
   const total = duration || track?.duration || 0;
-  const upNext = queue.slice(currentIndex + 1, currentIndex + 7);
+  const blurClass =
+    blur === "low"
+      ? fullscreen.blurLow
+      : blur === "high"
+        ? fullscreen.blurHigh
+        : fullscreen.blurMedium;
 
   return (
-    <section className={styles.npOverlay} aria-label="Now playing">
-      <div className={styles.npTop}>
-        <div className={styles.npTopLabel}>
-          <span>Now Playing</span>
+    <section className={fullscreen.overlay} aria-label="Now playing">
+      {background === "art" ? (
+        <div className={fullscreen.backdrop} aria-hidden="true">
+          <div className={`${fullscreen.backdropImage} ${blurClass}`}>
+            <Artwork
+              src={track?.coverUrl}
+              coverId={track?.coverArt}
+              size={1200}
+              alt=""
+            />
+          </div>
+          <div className={fullscreen.backdropScrim} />
         </div>
-        <div className={styles.npTopActions}>
+      ) : null}
+      {background === "visualizer" ? (
+        <div className={fullscreen.backdrop} aria-hidden="true">
+          <Visualizer
+            variant={visualizer}
+            className={fullscreen.backdropVisualizer}
+          />
+          <div className={fullscreen.backdropScrim} />
+        </div>
+      ) : null}
+
+      <div className={fullscreen.top}>
+        <div className={fullscreen.topLabel}>Now Playing</div>
+        <div className={fullscreen.topActions}>
           <button
             type="button"
-            className={`${styles.ctrlBtn} ${queueOpen ? styles.queueActive : ""}`}
-            onClick={() => setQueueOpen(!queueOpen)}
-            aria-label="Queue"
+            className={`${fullscreen.ctrlBtn} ${sidebarOpen ? fullscreen.ctrlActive : ""}`}
+            onClick={() => update({ fullscreenSidebarOpen: !sidebarOpen })}
+            aria-label="Toggle sidebar"
+            aria-pressed={sidebarOpen}
           >
             <ListMusic size={17} />
           </button>
+
+          <div className={fullscreen.popoverWrap}>
+            <button
+              type="button"
+              className={`${fullscreen.ctrlBtn} ${settingsOpen ? fullscreen.ctrlActive : ""}`}
+              onClick={() => setSettingsOpen((value) => !value)}
+              aria-label="Fullscreen settings"
+              aria-haspopup="dialog"
+              aria-expanded={settingsOpen}
+            >
+              <SlidersHorizontal size={16} />
+            </button>
+            {settingsOpen ? (
+              <div
+                className={fullscreen.popover}
+                role="dialog"
+                aria-label="Fullscreen settings"
+              >
+                <div className={fullscreen.popoverRow}>
+                  <div className={fullscreen.popoverLabel}>Background</div>
+                  <div className={ui.segmented}>
+                    {BACKGROUNDS.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={`${ui.segment} ${background === item.key ? ui.segmentActive : ""}`}
+                        onClick={() =>
+                          update({ fullscreenBackground: item.key })
+                        }
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {background === "visualizer" ? (
+                  <div className={fullscreen.popoverRow}>
+                    <div className={fullscreen.popoverLabel}>Visualizer</div>
+                    <div className={ui.segmented}>
+                      {VISUALIZERS.map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className={`${ui.segment} ${visualizer === item.key ? ui.segmentActive : ""}`}
+                          onClick={() =>
+                            update({ fullscreenVisualizer: item.key })
+                          }
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {background === "art" ? (
+                  <div className={fullscreen.popoverRow}>
+                    <div className={fullscreen.popoverLabel}>Cover blur</div>
+                    <div className={ui.segmented}>
+                      {BLURS.map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className={`${ui.segment} ${blur === item.key ? ui.segmentActive : ""}`}
+                          onClick={() => update({ fullscreenBlur: item.key })}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className={fullscreen.popoverRow}>
+                  <div className={fullscreen.popoverLabel}>Sidebar</div>
+                  <div className={ui.segmented}>
+                    <button
+                      type="button"
+                      className={`${ui.segment} ${sidebarOpen ? ui.segmentActive : ""}`}
+                      onClick={() => update({ fullscreenSidebarOpen: true })}
+                    >
+                      Shown
+                    </button>
+                    <button
+                      type="button"
+                      className={`${ui.segment} ${!sidebarOpen ? ui.segmentActive : ""}`}
+                      onClick={() => update({ fullscreenSidebarOpen: false })}
+                    >
+                      Hidden
+                    </button>
+                  </div>
+                </div>
+
+                <div className={fullscreen.popoverHint}>
+                  Escape closes the sidebar first, then this view.
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <button
             type="button"
-            className={styles.ctrlBtn}
+            className={fullscreen.ctrlBtn}
             onClick={() => void toggleMini()}
             aria-label="Mini player"
           >
@@ -146,7 +337,7 @@ export function NowPlaying() {
           </button>
           <button
             type="button"
-            className={styles.ctrlBtn}
+            className={fullscreen.ctrlBtn}
             onClick={() => setOpen(false)}
             aria-label="Close now playing"
           >
@@ -155,9 +346,9 @@ export function NowPlaying() {
         </div>
       </div>
 
-      <div className={styles.npBody}>
-        <div className={styles.npLeft}>
-          <div className={styles.npArt}>
+      <div className={fullscreen.body}>
+        <div className={fullscreen.stage}>
+          <div className={fullscreen.artWrap}>
             <Artwork
               src={track?.coverUrl}
               coverId={track?.coverArt}
@@ -167,19 +358,24 @@ export function NowPlaying() {
             />
           </div>
 
-          <div className={styles.npMeta}>
-            <div className={styles.npTitle}>{track?.title ?? "Nothing playing"}</div>
-            <div className={styles.npArtist}>{track?.artist ?? "—"}</div>
-            <div className={styles.npAlbum}>
+          <div className={fullscreen.meta}>
+            <div className={fullscreen.titleRow}>
+              <span className={fullscreen.title}>
+                {track?.title ?? "Nothing playing"}
+              </span>
+              {isExplicit(track) ? <ExplicitBadge /> : null}
+            </div>
+            <div className={fullscreen.artist}>{track?.artist ?? "—"}</div>
+            <div className={fullscreen.album}>
               {[track?.album, track?.albumArtist].filter(Boolean).join(" · ")}
             </div>
           </div>
 
-          <div className={styles.npControls}>
-            <div className={styles.npControlRow}>
+          <div className={fullscreen.controls}>
+            <div className={fullscreen.controlRow}>
               <button
                 type="button"
-                className={`${styles.ctrlBtn} ${shuffle ? styles.ctrlActive : ""}`}
+                className={`${fullscreen.ctrlBtn} ${shuffle ? fullscreen.ctrlActive : ""}`}
                 onClick={() => setShuffle(!shuffle)}
                 aria-label="Shuffle"
                 aria-pressed={shuffle}
@@ -188,7 +384,7 @@ export function NowPlaying() {
               </button>
               <button
                 type="button"
-                className={styles.ctrlBtn}
+                className={fullscreen.ctrlBtn}
                 onClick={() => prev()}
                 aria-label="Previous track"
                 disabled={!hasTrack}
@@ -197,7 +393,7 @@ export function NowPlaying() {
               </button>
               <button
                 type="button"
-                className={styles.playBtn}
+                className={fullscreen.playBtn}
                 onClick={() => toggle()}
                 aria-label={playing ? "Pause" : "Play"}
                 disabled={!hasTrack}
@@ -215,7 +411,7 @@ export function NowPlaying() {
               </button>
               <button
                 type="button"
-                className={styles.ctrlBtn}
+                className={fullscreen.ctrlBtn}
                 onClick={() => next()}
                 aria-label="Next track"
                 disabled={!hasTrack}
@@ -224,7 +420,7 @@ export function NowPlaying() {
               </button>
               <button
                 type="button"
-                className={`${styles.ctrlBtn} ${repeat !== "off" ? styles.ctrlActive : ""}`}
+                className={`${fullscreen.ctrlBtn} ${repeat !== "off" ? fullscreen.ctrlActive : ""}`}
                 onClick={() => cycleRepeat()}
                 aria-label="Repeat"
                 aria-pressed={repeat !== "off"}
@@ -237,10 +433,10 @@ export function NowPlaying() {
               </button>
             </div>
 
-            <div className={styles.progressRow}>
-              <span className={styles.time}>{formatTime(elapsed)}</span>
+            <div className={fullscreen.progressRow}>
+              <span className={fullscreen.time}>{formatTime(elapsed)}</span>
               <WaveformSeek
-                className={styles.seek}
+                className={fullscreen.seek}
                 value={elapsed}
                 max={total}
                 height={52}
@@ -252,71 +448,123 @@ export function NowPlaying() {
                   seek(value);
                 }}
               />
-              <span className={styles.time}>{formatTime(total)}</span>
+              <span className={fullscreen.time}>{formatTime(total)}</span>
             </div>
           </div>
         </div>
 
-        <div className={styles.npRight}>
-          <div className={styles.npSection}>
-            <div className={styles.npSectionHead}>
-              <span className={styles.npSectionTitle}>Track information</span>
-            </div>
-            <div className={styles.infoGrid}>
-              {info.map((row) => (
-                <div key={row.label} className={styles.infoItem}>
-                  <div className={styles.infoLabel}>{row.label}</div>
-                  <div className={styles.infoValue}>{row.value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className={styles.npSection}>
-            <div className={styles.npSectionHead}>
-              <span className={styles.npSectionTitle}>Up next</span>
+        {sidebarOpen ? (
+          <aside className={fullscreen.sidebar} aria-label="Now playing details">
+            <div className={fullscreen.sidebarHead}>
+              <div className={fullscreen.tabs} role="tablist">
+                {PANELS.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={panel === item.key}
+                    className={`${fullscreen.tab} ${panel === item.key ? fullscreen.tabActive : ""}`}
+                    onClick={() =>
+                      update({ fullscreenSidebarPanel: item.key })
+                    }
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
-                className={styles.ctrlBtn}
-                onClick={() => setQueueOpen(true)}
-                aria-label="Open full queue"
+                className={fullscreen.ctrlBtn}
+                onClick={() => update({ fullscreenSidebarOpen: false })}
+                aria-label="Hide sidebar"
               >
-                <ListMusic size={16} />
+                <X size={16} />
               </button>
             </div>
-            {upNext.length ? (
-              <div className={styles.upNextList}>
-                {upNext.map((song, offset) => {
-                  const index = currentIndex + 1 + offset;
-                  return (
-                    <button
-                      type="button"
-                      key={`${song.id}-${index}`}
-                      className={styles.upNextRow}
-                      onClick={() => playIndex(index)}
-                    >
-                      <Artwork
-                        coverId={song.coverArt}
-                        size={80}
-                        rounded="sm"
-                        className={styles.upNextArt}
-                        style={{ width: 34, height: 34, flexShrink: 0 }}
-                      />
-                      <span className={styles.upNextMain}>
-                        <span className={styles.upNextTitle}>{song.title}</span>
-                        <span className={styles.upNextArtist}>
-                          {song.artist ?? ""}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
+
+            {panel === "lyrics" ? (
+              track ? (
+                <div
+                  className={`${fullscreen.sidebarBody} ${fullscreen.sidebarBodyLyrics}`}
+                >
+                  <LyricsPanel trackId={track.id} />
+                </div>
+              ) : (
+                <div className={fullscreen.sidebarBody}>
+                  <div className={fullscreen.queueEmpty}>
+                    Nothing playing.
+                  </div>
+                </div>
+              )
+            ) : panel === "info" ? (
+              <div className={fullscreen.sidebarBody}>
+                {info.length ? (
+                  <div className={fullscreen.infoGrid}>
+                    {info.map((row) => (
+                      <div key={row.label} className={fullscreen.infoItem}>
+                        <div className={fullscreen.infoLabel}>{row.label}</div>
+                        <div className={fullscreen.infoValue}>{row.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={fullscreen.queueEmpty}>
+                    Nothing playing.
+                  </div>
+                )}
               </div>
             ) : (
-              <div className={styles.upNextEmpty}>Nothing queued after this.</div>
+              <div className={fullscreen.sidebarBody}>
+                {queue.length ? (
+                  <div className={fullscreen.queueList}>
+                    {queue.map((song, index) => {
+                      const active = index === currentIndex;
+                      return (
+                        <button
+                          key={`${song.id}-${index}`}
+                          type="button"
+                          className={`${fullscreen.queueItem} ${
+                            active ? fullscreen.queueItemActive : ""
+                          }`}
+                          onClick={() => playIndex(index)}
+                        >
+                          <span className={fullscreen.queueIndex}>
+                            {index + 1}
+                          </span>
+                          <span className={fullscreen.queueArt}>
+                            <Artwork
+                              coverId={song.coverArt}
+                              size={80}
+                              rounded="sm"
+                              style={{ width: 36, height: 36 }}
+                            />
+                          </span>
+                          <span className={fullscreen.queueMain}>
+                            <span className={fullscreen.queueTitleRow}>
+                              <span className={fullscreen.queueTitleText}>
+                                {song.title}
+                              </span>
+                              {isExplicit(song) ? <ExplicitBadge /> : null}
+                            </span>
+                            <span className={fullscreen.queueArtistText}>
+                              {song.artist ?? ""}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={fullscreen.queueEmpty}>
+                    Your queue is empty.
+                    <br />
+                    Use “Play next” or “Add to queue” from any track.
+                  </div>
+                )}
+              </div>
             )}
-          </div>
-        </div>
+          </aside>
+        ) : null}
       </div>
     </section>
   );

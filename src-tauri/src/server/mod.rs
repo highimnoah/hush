@@ -70,6 +70,25 @@ pub trait MusicServer: Send + Sync {
     async fn search(&self, query: &str) -> Result<SearchResults>;
     async fn starred(&self) -> Result<SearchResults>;
     async fn random_songs(&self, size: u32) -> Result<Vec<Song>>;
+    async fn lyrics(&self, id: &str) -> Result<Lyrics>;
+    async fn genres(&self) -> Result<Vec<Genre>>;
+    async fn songs_by_genre(&self, genre: &str, size: u32, offset: u32) -> Result<Vec<Song>>;
+    async fn albums_by_genre(&self, genre: &str, size: u32, offset: u32) -> Result<Vec<Album>>;
+    async fn create_playlist(
+        &self,
+        name: Option<&str>,
+        playlist_id: Option<&str>,
+        song_ids: &[String],
+    ) -> Result<PlaylistDetail>;
+    async fn update_playlist(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        comment: Option<&str>,
+        song_ids_to_add: &[String],
+        song_indexes_to_remove: &[u32],
+    ) -> Result<()>;
+    async fn delete_playlist(&self, id: &str) -> Result<()>;
     async fn scrobble(&self, id: &str, submission: bool) -> Result<()>;
     async fn set_star(&self, kind: StarKind, id: &str, starred: bool) -> Result<()>;
 

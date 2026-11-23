@@ -2,11 +2,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
+  AdvancedEvent,
   Album,
   AlbumDetail,
   Artist,
   ArtistDetail,
   GainEvent,
+  Genre,
+  LevelsEvent,
+  Lyrics,
+  PersistedPlayerState,
   PlaybackStatus,
   PlayerSnapshot,
   Playlist,
@@ -20,6 +25,7 @@ import type {
   Song,
   StarKind,
   TrackInfo,
+  TransitionMode,
   UiCommand,
   WaveformEvent,
   SessionSnapshot,
@@ -44,6 +50,33 @@ export const api = {
   getStarred: () => invoke<SearchResults>("get_starred"),
   getRandomSongs: (size = 50) =>
     invoke<Song[]>("get_random_songs", { size }),
+  getLyrics: (id: string) => invoke<Lyrics>("get_lyrics", { id }),
+  getGenres: () => invoke<Genre[]>("get_genres"),
+  getSongsByGenre: (genre: string, size = 200, offset = 0) =>
+    invoke<Song[]>("get_songs_by_genre", { genre, size, offset }),
+  getAlbumsByGenre: (genre: string, size = 50, offset = 0) =>
+    invoke<Album[]>("get_albums_by_genre", { genre, size, offset }),
+  createPlaylist: (name: string, songIds: string[] = []) =>
+    invoke<PlaylistDetail>("create_playlist", { name, songIds }),
+  replacePlaylist: (id: string, songIds: string[]) =>
+    invoke<PlaylistDetail>("replace_playlist", { id, songIds }),
+  updatePlaylist: (
+    id: string,
+    options: {
+      name?: string | null;
+      comment?: string | null;
+      songIdsToAdd?: string[];
+      songIndexesToRemove?: number[];
+    } = {},
+  ) =>
+    invoke<void>("update_playlist", {
+      id,
+      name: options.name ?? null,
+      comment: options.comment ?? null,
+      songIdsToAdd: options.songIdsToAdd ?? [],
+      songIndexesToRemove: options.songIndexesToRemove ?? [],
+    }),
+  deletePlaylist: (id: string) => invoke<void>("delete_playlist", { id }),
   getCoverArtUrl: (id: string, size = 600) =>
     invoke<string>("get_cover_art_url", { id, size }),
   getWaveform: (id: string) => invoke<number[] | null>("get_waveform", { id }),
@@ -52,7 +85,8 @@ export const api = {
   setStar: (kind: StarKind, id: string, starred: boolean) =>
     invoke<void>("set_star", { kind, id, starred }),
 
-  playerLoad: (track: TrackInfo) => invoke<void>("player_load", { track }),
+  playerLoad: (track: TrackInfo, startPosition = 0) =>
+    invoke<void>("player_load", { track, startPosition }),
   playerPlay: () => invoke<void>("player_play"),
   playerPause: () => invoke<void>("player_pause"),
   playerStop: () => invoke<void>("player_stop"),
@@ -60,11 +94,28 @@ export const api = {
   playerSetVolume: (volume: number) =>
     invoke<void>("player_set_volume", { volume }),
   playerSetMute: (muted: boolean) => invoke<void>("player_set_mute", { muted }),
+  playerPreload: (track: TrackInfo) =>
+    invoke<void>("player_preload", { track }),
+  playerClearPreload: () => invoke<void>("player_clear_preload"),
+  playerSetLevelsEnabled: (enabled: boolean) =>
+    invoke<void>("player_set_levels_enabled", { enabled }),
+  playerSetTransition: (mode: TransitionMode, seconds: number) =>
+    invoke<void>("player_set_transition", { mode, seconds }),
+  playerFadeOut: (seconds: number, pauseAfter = true) =>
+    invoke<void>("player_fade_out", { seconds, pauseAfter }),
+  playerSleepAtEnd: (fadeSeconds: number) =>
+    invoke<void>("player_sleep_at_end", { fadeSeconds }),
+  playerCancelSleep: () => invoke<void>("player_cancel_sleep"),
   playerSetReplayGain: (mode: ReplayGainMode) =>
     invoke<void>("player_set_replaygain", { mode }),
 
   getPlayerState: () => invoke<PlayerSnapshot>("get_player_state"),
   getCurrentTrack: () => invoke<TrackInfo | null>("get_current_track"),
+  getPlayerSession: () =>
+    invoke<PersistedPlayerState | null>("get_player_session"),
+  savePlayerSession: (session: PersistedPlayerState) =>
+    invoke<void>("save_player_session", { session }),
+  clearPlayerSession: () => invoke<void>("clear_player_session"),
   setPlaybackModes: (shuffle: boolean, repeat: RepeatMode) =>
     invoke<void>("set_playback_modes", { shuffle, repeat }),
 
@@ -93,6 +144,8 @@ export interface PlayerEventHandlers {
   waveform?: (event: WaveformEvent) => void;
   session?: (snapshot: SessionSnapshot) => void;
   command?: (command: UiCommand) => void;
+  advanced?: (event: AdvancedEvent) => void;
+  levels?: (event: LevelsEvent) => void;
 }
 
 /**
@@ -169,6 +222,20 @@ export function subscribePlayerEvents(handlers: PlayerEventHandlers): () => void
     track(
       listen<UiCommand>("hush://command", (event) =>
         handlers.command?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.advanced) {
+    track(
+      listen<AdvancedEvent>("player://advanced", (event) =>
+        handlers.advanced?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.levels) {
+    track(
+      listen<LevelsEvent>("player://levels", (event) =>
+        handlers.levels?.(event.payload),
       ),
     );
   }

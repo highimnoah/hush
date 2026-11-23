@@ -4,9 +4,10 @@ import { Link, useParams } from "react-router-dom";
 
 import { AsyncContent } from "../components/ui/AsyncContent";
 import { Artwork } from "../components/ui/Artwork";
+import { ExplicitBadge } from "../components/ui/ExplicitBadge";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { TrackList } from "../components/library/TrackList";
-import { formatDuration } from "../lib/format";
+import { formatDuration, isExplicit } from "../lib/format";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import type { AlbumDetail, Song } from "../lib/types";
@@ -39,6 +40,9 @@ function AlbumBody({ detail }: { detail: AlbumDetail }) {
   const total =
     album.duration ?? songs.reduce((sum, song) => sum + (song.duration ?? 0), 0);
   const multiDisc = groups.length > 1;
+  const explicit =
+    isExplicit({ explicitStatus: album.explicitStatus }) ||
+    songs.some((song) => isExplicit(song));
 
   return (
     <>
@@ -53,7 +57,10 @@ function AlbumBody({ detail }: { detail: AlbumDetail }) {
         </div>
         <div className={styles.heroInfo}>
           <div className={styles.heroKind}>Album</div>
-          <h1 className={styles.heroTitle}>{album.name}</h1>
+          <div className={styles.heroTitleRow}>
+            <h1 className={styles.heroTitle}>{album.name}</h1>
+            {explicit ? <ExplicitBadge /> : null}
+          </div>
           <div className={styles.heroMeta}>
             {album.artist ? (
               album.artistId ? (

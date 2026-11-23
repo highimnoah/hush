@@ -29,14 +29,7 @@ import { Artwork } from "./ui/Artwork";
 import { Slider } from "./ui/Slider";
 import { WaveformSeek } from "./ui/WaveformSeek";
 
-const SLEEP_OPTIONS: { label: string; value: number | null }[] = [
-  { label: "Off", value: null },
-  { label: "15 minutes", value: 15 },
-  { label: "30 minutes", value: 30 },
-  { label: "45 minutes", value: 45 },
-  { label: "60 minutes", value: 60 },
-  { label: "90 minutes", value: 90 },
-];
+const SLEEP_MINUTES = [15, 30, 45, 60, 90];
 
 export function PlayerBar() {
   const track = usePlayer((state) => state.track);
@@ -65,7 +58,9 @@ export function PlayerBar() {
   const toggleMini = usePlayer((state) => state.toggleMini);
   const sleepTimerEndsAt = usePlayer((state) => state.sleepTimerEndsAt);
   const sleepTimerMinutes = usePlayer((state) => state.sleepTimerMinutes);
+  const sleepMode = usePlayer((state) => state.sleepMode);
   const setSleepTimer = usePlayer((state) => state.setSleepTimer);
+  const setSleepMode = usePlayer((state) => state.setSleepMode);
 
   const [preview, setPreview] = useState<number | null>(null);
   const [sleepOpen, setSleepOpen] = useState(false);
@@ -82,10 +77,19 @@ export function PlayerBar() {
     return () => window.removeEventListener("mousedown", onPointerDown, true);
   }, [sleepOpen]);
 
-  const sleepActive = sleepTimerEndsAt != null;
-  const sleepRemaining = sleepActive
-    ? Math.max(0, Math.ceil((sleepTimerEndsAt! - Date.now()) / 60000))
-    : 0;
+  const sleepActive = sleepMode != null;
+  const sleepRemaining =
+    sleepTimerEndsAt != null
+      ? Math.max(0, Math.ceil((sleepTimerEndsAt - Date.now()) / 60000))
+      : 0;
+  const sleepTitle =
+    sleepMode === "endOfTrack"
+      ? "Sleep timer: end of this track"
+      : sleepMode === "endOfQueue"
+        ? "Sleep timer: end of queue"
+        : sleepActive
+          ? `Sleep timer: ${sleepRemaining} min left`
+          : "Sleep timer";
 
   const quality = useMemo(() => {
     if (!track) return null;
@@ -253,33 +257,42 @@ export function PlayerBar() {
             aria-label="Sleep timer"
             aria-haspopup="menu"
             aria-expanded={sleepOpen}
-            title={
-              sleepActive
-                ? `Sleep timer: ${sleepRemaining} min left`
-                : "Sleep timer"
-            }
+            title={sleepTitle}
           >
             <Moon size={16} />
           </button>
           {sleepOpen ? (
             <div className={styles.popover} role="menu">
               <div className={styles.popoverLabel}>Sleep timer</div>
-              {SLEEP_OPTIONS.map((option) => {
-                const selected = sleepTimerMinutes === option.value;
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={sleepMode == null}
+                className={`${styles.popoverItem} ${sleepMode == null ? styles.popoverItemActive : ""}`}
+                onClick={() => {
+                  setSleepMode(null);
+                  setSleepOpen(false);
+                }}
+              >
+                <span>Off</span>
+              </button>
+              {SLEEP_MINUTES.map((minutes) => {
+                const selected =
+                  sleepMode === "minutes" && sleepTimerMinutes === minutes;
                 return (
                   <button
-                    key={option.label}
+                    key={minutes}
                     type="button"
                     role="menuitemradio"
                     aria-checked={selected}
                     className={`${styles.popoverItem} ${selected ? styles.popoverItemActive : ""}`}
                     onClick={() => {
-                      setSleepTimer(option.value);
+                      setSleepTimer(minutes);
                       setSleepOpen(false);
                     }}
                   >
-                    <span>{option.label}</span>
-                    {selected && option.value != null ? (
+                    <span>{minutes} minutes</span>
+                    {selected ? (
                       <span className={styles.popoverHint}>
                         {sleepRemaining} min
                       </span>
@@ -287,6 +300,31 @@ export function PlayerBar() {
                   </button>
                 );
               })}
+              <div className={styles.popoverLabel}>Or at the end</div>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={sleepMode === "endOfTrack"}
+                className={`${styles.popoverItem} ${sleepMode === "endOfTrack" ? styles.popoverItemActive : ""}`}
+                onClick={() => {
+                  setSleepMode("endOfTrack");
+                  setSleepOpen(false);
+                }}
+              >
+                <span>End of this track</span>
+              </button>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={sleepMode === "endOfQueue"}
+                className={`${styles.popoverItem} ${sleepMode === "endOfQueue" ? styles.popoverItemActive : ""}`}
+                onClick={() => {
+                  setSleepMode("endOfQueue");
+                  setSleepOpen(false);
+                }}
+              >
+                <span>End of queue</span>
+              </button>
             </div>
           ) : null}
         </div>

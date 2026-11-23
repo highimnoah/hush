@@ -269,6 +269,72 @@ struct RandomSongs {
     song: Vec<Song>,
 }
 
+#[derive(Deserialize, Default)]
+struct GenresPayload {
+    #[serde(default)]
+    genres: Genres,
+}
+
+#[derive(Deserialize, Default)]
+struct Genres {
+    #[serde(default)]
+    genre: Vec<Genre>,
+}
+
+#[derive(Deserialize, Default)]
+struct SongsByGenrePayload {
+    #[serde(default, rename = "songsByGenre")]
+    songs_by_genre: SongsByGenre,
+}
+
+#[derive(Deserialize, Default)]
+struct SongsByGenre {
+    #[serde(default)]
+    song: Vec<Song>,
+}
+
+#[derive(Deserialize, Default)]
+struct CreatePlaylistPayload {
+    #[serde(default)]
+    playlist: Option<Value>,
+}
+
+#[derive(Deserialize, Default)]
+struct LyricsPayload {
+    #[serde(default, rename = "lyricsList")]
+    lyrics_list: LyricsList,
+}
+
+#[derive(Deserialize, Default)]
+struct LyricsList {
+    #[serde(default, rename = "structuredLyrics")]
+    structured_lyrics: Vec<StructuredLyrics>,
+}
+
+#[derive(Deserialize, Default)]
+struct StructuredLyrics {
+    #[serde(default)]
+    value: Option<String>,
+    #[serde(default, rename = "displayArtist")]
+    display_artist: Option<String>,
+    #[serde(default, rename = "displayTitle")]
+    display_title: Option<String>,
+    #[serde(default)]
+    synced: bool,
+    #[serde(default, deserialize_with = "opt_f64")]
+    offset: Option<f64>,
+    #[serde(default)]
+    line: Vec<StructuredLyricLine>,
+}
+
+#[derive(Deserialize, Default)]
+struct StructuredLyricLine {
+    #[serde(default, deserialize_with = "opt_f64")]
+    start: Option<f64>,
+    #[serde(default)]
+    value: String,
+}
+
 fn take_songs(value: &Value) -> Vec<Song> {
     value
         .get("song")
@@ -401,6 +467,164 @@ impl MusicServer for SubsonicClient {
             .call::<RandomSongsPayload>("getRandomSongs", &[("size", size.to_string())])
             .await?;
         Ok(response.payload.random_songs.song)
+    }
+
+    async fn lyrics(&self, id: &str) -> Result<Lyrics> {
+        let response = self
+            .call::<LyricsPayload>("getLyricsBySongId", &[("id", id.to_string())])
+            .await?;
+
+        let mut entries = response.payload.lyrics_list.structured_lyrics;
+        if entries.is_empty() {
+            return Ok(Lyrics::default());
+        }
+
+        // Prefer a synced entry; fall back to plain text.
+        entries.sort_by_key(|entry| !entry.synced);
+        let entry = entries.remove(0);
+        let offset = entry.offset.unwrap_or(0.0);
+
+        let synced = if entry.synced && !entry.line.is_empty() {
+            let mut lines: Vec<LyricLine> = entry
+                .line
+                .iter()
+                .map(|line| LyricLine {
+                    start_ms: ((line.start.unwrap_or(0.0) + offset).max(0.0)).round() as u64,
+                    text: line.value.clone(),
+                })
+                .collect();
+            lines.sort_by_key(|line| line.start_ms);
+            Some(lines)
+        } else {
+            None
+        };
+
+        let plain = entry.value.clone().or_else(|| {
+            if synced.is_none() && !entry.line.is_empty() {
+                Some(
+                    entry
+                        .line
+                        .iter()
+                        .map(|line| line.value.clone())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )
+            } else {
+                None
+            }
+        });
+
+        Ok(Lyrics {
+            plain,
+            synced,
+            title: entry.display_title,
+            artist: entry.display_artist,
+            album: None,
+        })
+    }
+
+    async fn genres(&self) -> Result<Vec<Genre>> {
+        let response = self.call::<GenresPayload>("getGenres", &[]).await?;
+        Ok(response.payload.genres.genre)
+    }
+
+    async fn songs_by_genre(&self, genre: &str, size: u32, offset: u32) -> Result<Vec<Song>> {
+        let response = self
+            .call::<SongsByGenrePayload>(
+                "getSongsByGenre",
+                &[
+                    ("genre", genre.to_string()),
+                    ("count", size.to_string()),
+                    ("offset", offset.to_string()),
+                ],
+            )
+            .await?;
+        Ok(response.payload.songs_by_genre.song)
+    }
+
+    async fn albums_by_genre(&self, genre: &str, size: u32, offset: u32) -> Result<Vec<Album>> {
+        let response = self
+            .call::<AlbumListPayload>(
+                "getAlbumList2",
+                &[
+                    ("type", "byGenre".to_string()),
+                    ("genre", genre.to_string()),
+                    ("size", size.to_string()),
+                    ("offset", offset.to_string()),
+                ],
+            )
+            .await?;
+        Ok(response.payload.album_list2.album)
+    }
+
+    async fn create_playlist(
+        &self,
+        name: Option<&str>,
+        playlist_id: Option<&str>,
+        song_ids: &[String],
+    ) -> Result<PlaylistDetail> {
+        let mut extra: Vec<(&str, String)> = Vec::new();
+        if let Some(name) = name {
+            extra.push(("name", name.to_string()));
+        }
+        if let Some(id) = playlist_id {
+            extra.push(("playlistId", id.to_string()));
+        }
+        for id in song_ids {
+            extra.push(("songId", id.clone()));
+        }
+
+        let response = self
+            .call::<CreatePlaylistPayload>("createPlaylist", &extra)
+            .await?;
+
+        if let Some(value) = response.payload.playlist {
+            let playlist: Playlist = serde_json::from_value(value.clone())?;
+            let songs = take_entries(&value);
+            return Ok(PlaylistDetail { playlist, songs });
+        }
+
+        // Some servers return an empty payload; synthesize a best-effort value.
+        Ok(PlaylistDetail {
+            playlist: Playlist {
+                id: playlist_id.unwrap_or_default().to_string(),
+                name: name.unwrap_or_default().to_string(),
+                ..Default::default()
+            },
+            songs: Vec::new(),
+        })
+    }
+
+    async fn update_playlist(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        comment: Option<&str>,
+        song_ids_to_add: &[String],
+        song_indexes_to_remove: &[u32],
+    ) -> Result<()> {
+        let mut extra: Vec<(&str, String)> = vec![("playlistId", id.to_string())];
+        if let Some(name) = name {
+            extra.push(("name", name.to_string()));
+        }
+        if let Some(comment) = comment {
+            extra.push(("comment", comment.to_string()));
+        }
+        for song in song_ids_to_add {
+            extra.push(("songIdToAdd", song.clone()));
+        }
+        for index in song_indexes_to_remove {
+            extra.push(("songIndexToRemove", index.to_string()));
+        }
+        let _ = self.call::<Empty>("updatePlaylist", &extra).await?;
+        Ok(())
+    }
+
+    async fn delete_playlist(&self, id: &str) -> Result<()> {
+        let _ = self
+            .call::<Empty>("deletePlaylist", &[("id", id.to_string())])
+            .await?;
+        Ok(())
     }
 
     async fn scrobble(&self, id: &str, submission: bool) -> Result<()> {

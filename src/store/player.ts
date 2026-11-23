@@ -2,20 +2,34 @@ import { create } from "zustand";
 
 import { api } from "../lib/ipc";
 import type {
+  PersistedPlayerState,
   PlaybackStatus,
   PlayerSnapshot,
   RepeatMode,
   ReplayGainMode,
+  SleepMode,
   Song,
   TrackInfo,
 } from "../lib/types";
+import { useSettings } from "./settings";
 
 const SCROBBLE_THRESHOLD_MS = 30_000;
+const SESSION_SAVE_DEBOUNCE_MS = 1_500;
+const SESSION_SAVE_HEARTBEAT_MS = 5_000;
 
 // Module-scoped scrobble bookkeeping (not reactive).
 let scrobbleId: string | null = null;
 let scrobbleStartedAt = 0;
 let sleepTimeout: number | null = null;
+let sleepFadeTimeout: number | null = null;
+
+// Persistent-session bookkeeping (not reactive).
+let sessionSaveTimer: number | null = null;
+let sessionLastSavedAt = 0;
+let sessionRestored = false;
+
+// Gapless/fade boundary bookkeeping (not reactive).
+let lastAdvancedAt = 0;
 
 function toTrack(song: Song): TrackInfo {
   return {
@@ -31,6 +45,7 @@ function toTrack(song: Song): TrackInfo {
     bitDepth: song.bitDepth,
     samplingRate: song.samplingRate,
     channelCount: song.channelCount,
+    explicitStatus: song.explicitStatus,
   };
 }
 
@@ -48,6 +63,71 @@ function maybeSubmitScrobble(): void {
     void api.scrobble(scrobbleId, true).catch(() => {});
   }
   scrobbleId = null;
+}
+
+function persistSession(get: () => PlayerStore): void {
+  const state = get();
+  if (!state.queue.length) return;
+  sessionLastSavedAt = Date.now();
+  const session: PersistedPlayerState = {
+    queue: state.queue,
+    baseQueue: state.baseQueue,
+    currentIndex: state.currentIndex,
+    position: state.position,
+    shuffle: state.shuffle,
+    repeat: state.repeat,
+    savedAt: sessionLastSavedAt,
+  };
+  void api.savePlayerSession(session).catch(() => {});
+}
+
+function scheduleSessionSave(get: () => PlayerStore): void {
+  if (sessionSaveTimer != null) window.clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = window.setTimeout(() => {
+    sessionSaveTimer = null;
+    persistSession(get);
+  }, SESSION_SAVE_DEBOUNCE_MS);
+}
+
+function cancelScheduledSessionSave(): void {
+  if (sessionSaveTimer != null) {
+    window.clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = null;
+  }
+}
+
+function heartbeatSessionSave(get: () => PlayerStore): void {
+  if (Date.now() - sessionLastSavedAt >= SESSION_SAVE_HEARTBEAT_MS) {
+    persistSession(get);
+  }
+}
+
+function clearSleepTimers(): void {
+  if (sleepTimeout != null) {
+    window.clearTimeout(sleepTimeout);
+    sleepTimeout = null;
+  }
+  if (sleepFadeTimeout != null) {
+    window.clearTimeout(sleepFadeTimeout);
+    sleepFadeTimeout = null;
+  }
+}
+
+function armSleepQueueEnd(get: () => PlayerStore): void {
+  const state = get();
+  if (state.sleepMode !== "endOfQueue" || !state.queue.length) return;
+  if (state.currentIndex >= state.queue.length - 1) {
+    void api.playerSleepAtEnd(20).catch(() => {});
+  }
+}
+
+function armSleepOnNewTrack(get: () => PlayerStore): void {
+  const state = get();
+  if (state.sleepMode === "endOfTrack") {
+    void api.playerSleepAtEnd(20).catch(() => {});
+  } else if (state.sleepMode === "endOfQueue") {
+    armSleepQueueEnd(get);
+  }
 }
 
 interface PlayerStore {
@@ -74,6 +154,15 @@ interface PlayerStore {
   miniOpen: boolean;
   sleepTimerEndsAt: number | null;
   sleepTimerMinutes: number | null;
+  sleepMode: SleepMode | null;
+  /** Set when a queue was restored from disk and playback has not started yet. */
+  restoredPosition: number | null;
+
+  restoreSession: () => Promise<void>;
+  resumeRestored: () => void;
+  preloadNext: () => void;
+  onAdvanced: (trackId: string) => void;
+  setSleepMode: (mode: SleepMode | null) => void;
 
   applySnapshot: (snapshot: PlayerSnapshot) => void;
   applyPosition: (position: number, duration: number) => void;
@@ -134,11 +223,19 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       status: "playing",
       buffering: true,
       error: null,
+      restoredPosition: null,
     });
 
-    void api.playerLoad(track).catch((err: unknown) => {
-      set({ error: String(err), status: "stopped" });
-    });
+    scheduleSessionSave(get);
+
+    void api
+      .playerLoad(track)
+      .then(() => get().preloadNext())
+      .catch((err: unknown) => {
+        set({ error: String(err), status: "stopped" });
+      });
+
+    armSleepOnNewTrack(get);
 
     void api
       .getWaveform(song.id)
@@ -172,6 +269,156 @@ export const usePlayer = create<PlayerStore>((set, get) => {
     miniOpen: false,
     sleepTimerEndsAt: null,
     sleepTimerMinutes: null,
+    sleepMode: null,
+    restoredPosition: null,
+
+    restoreSession: async () => {
+      if (sessionRestored) return;
+      sessionRestored = true;
+      try {
+        const saved = await api.getPlayerSession();
+        if (!saved || !saved.queue.length) return;
+        const index = Math.max(
+          0,
+          Math.min(saved.currentIndex ?? 0, saved.queue.length - 1),
+        );
+        const song = saved.queue[index];
+        if (!song) return;
+
+        const duration = song.duration ?? 0;
+        const rawPosition = Number.isFinite(saved.position) ? saved.position : 0;
+        const position =
+          duration > 0
+            ? Math.min(Math.max(0, rawPosition), duration)
+            : Math.max(0, rawPosition);
+        const shuffle = Boolean(saved.shuffle);
+        const repeat: RepeatMode = saved.repeat ?? "off";
+
+        set({
+          queue: saved.queue,
+          baseQueue: saved.baseQueue?.length ? saved.baseQueue : saved.queue,
+          currentIndex: index,
+          shuffle,
+          repeat,
+          track: toTrack(song),
+          status: "paused",
+          position,
+          duration,
+          restoredPosition: position,
+          buffering: false,
+          error: null,
+        });
+
+        void api.setPlaybackModes(shuffle, repeat).catch(() => {});
+
+        if (useSettings.getState().settings?.resumePlayback) {
+          get().resumeRestored();
+        }
+      } catch {
+        /* no saved session */
+      }
+    },
+
+    resumeRestored: () => {
+      const { track, restoredPosition } = get();
+      if (!track) return;
+      const position = restoredPosition ?? 0;
+      set({
+        restoredPosition: null,
+        status: "playing",
+        buffering: true,
+        error: null,
+        position,
+      });
+      scheduleSessionSave(get);
+      void api
+        .playerLoad(track, position)
+        .then(() => get().preloadNext())
+        .catch((err: unknown) => {
+          set({ error: String(err), status: "stopped", buffering: false });
+        });
+      armSleepOnNewTrack(get);
+    },
+
+    preloadNext: () => {
+      const { queue, currentIndex, repeat } = get();
+      if (!queue.length) {
+        void api.playerClearPreload().catch(() => {});
+        return;
+      }
+
+      let nextIndex: number | null = null;
+      if (repeat === "one") {
+        nextIndex = currentIndex;
+      } else {
+        let candidate = currentIndex + 1;
+        if (candidate >= queue.length) {
+          candidate = repeat === "all" ? 0 : -1;
+        }
+        nextIndex = candidate >= 0 ? candidate : null;
+      }
+
+      const song = nextIndex == null ? null : queue[nextIndex];
+      if (!song) {
+        void api.playerClearPreload().catch(() => {});
+        return;
+      }
+
+      void api.playerPreload(toTrack(song)).catch(() => {});
+    },
+
+    onAdvanced: (trackId) => {
+      const state = get();
+      maybeSubmitScrobble();
+      scrobbleId = trackId || null;
+      scrobbleStartedAt = Date.now();
+      if (trackId) void api.scrobble(trackId, false).catch(() => {});
+
+      // Prefer the next occurrence after the current index so duplicate ids
+      // in a queue resolve to the entry the engine actually advanced to.
+      let index = -1;
+      const current = state.queue[state.currentIndex];
+      if (current && current.id === trackId) {
+        index = state.currentIndex;
+      } else if (state.queue.length) {
+        for (let offset = 1; offset <= state.queue.length; offset += 1) {
+          const candidate = (state.currentIndex + offset) % state.queue.length;
+          if (state.queue[candidate]?.id === trackId) {
+            index = candidate;
+            break;
+          }
+        }
+        if (index < 0) {
+          index = state.queue.findIndex((song) => song.id === trackId);
+        }
+      }
+
+      const nextIndex = index >= 0 ? index : state.currentIndex;
+      const song = state.queue[nextIndex];
+      lastAdvancedAt = Date.now();
+
+      set({
+        currentIndex: nextIndex,
+        position: 0,
+        duration: song?.duration ?? state.duration,
+        status: "playing",
+        buffering: false,
+        restoredPosition: null,
+      });
+
+      if (trackId) {
+        void api
+          .getWaveform(trackId)
+          .then((peaks) => {
+            if (peaks?.length) get().setWaveform(trackId, peaks);
+          })
+          .catch(() => {});
+      }
+
+      scheduleSessionSave(get);
+      get().preloadNext();
+      armSleepOnNewTrack(get);
+    },
 
     applySnapshot: (snapshot) => {
       set((state) => ({
@@ -191,6 +438,23 @@ export const usePlayer = create<PlayerStore>((set, get) => {
         buffering: snapshot.buffering,
         track: snapshot.track,
       }));
+
+      // The engine pauses itself when a sleep fade completes; clear the mode.
+      const current = get();
+      if (current.sleepMode != null && snapshot.status === "paused") {
+        const reachedEnd =
+          current.sleepMode !== "minutes" ||
+          (current.sleepTimerEndsAt != null &&
+            Date.now() >= current.sleepTimerEndsAt - 25_000);
+        if (reachedEnd) {
+          clearSleepTimers();
+          set({
+            sleepMode: null,
+            sleepTimerEndsAt: null,
+            sleepTimerMinutes: null,
+          });
+        }
+      }
     },
 
     applyPosition: (position, duration) => {
@@ -198,11 +462,17 @@ export const usePlayer = create<PlayerStore>((set, get) => {
         position: Number.isFinite(position) ? position : state.position,
         duration: duration > 0 ? duration : state.duration,
       }));
+      if (get().status === "playing") heartbeatSessionSave(get);
     },
 
     onTrack: (track) => set((state) => ({ track: track ?? state.track })),
 
-    onEnded: () => get().next(true),
+    onEnded: () => {
+      // An engine-side advance already moved the queue; a late EOS message
+      // from the old item must not advance again.
+      if (Date.now() - lastAdvancedAt < 1_500) return;
+      get().next(true);
+    },
 
     onError: (message) => set({ error: message, status: "stopped" }),
 
@@ -223,23 +493,34 @@ export const usePlayer = create<PlayerStore>((set, get) => {
     },
 
     toggle: () => {
-      const { status, queue, currentIndex } = get();
+      const { status, queue, currentIndex, restoredPosition, track } = get();
       if (status === "playing") {
         void api.playerPause();
         set({ status: "paused" });
+        scheduleSessionSave(get);
       } else if (status === "paused") {
+        if (restoredPosition != null && track) {
+          get().resumeRestored();
+          return;
+        }
         void api.playerPlay();
         set({ status: "playing" });
+        scheduleSessionSave(get);
       } else if (queue.length) {
         loadIndex(currentIndex);
       }
     },
 
     play: () => {
-      const { status, queue, currentIndex } = get();
+      const { status, queue, currentIndex, restoredPosition, track } = get();
       if (status === "paused") {
+        if (restoredPosition != null && track) {
+          get().resumeRestored();
+          return;
+        }
         void api.playerPlay();
         set({ status: "playing" });
+        scheduleSessionSave(get);
       } else if (status === "stopped" && queue.length) {
         loadIndex(currentIndex);
       }
@@ -249,13 +530,16 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       if (get().status !== "playing") return;
       void api.playerPause();
       set({ status: "paused" });
+      scheduleSessionSave(get);
     },
 
     stop: () => {
       maybeSubmitScrobble();
       scrobbleId = null;
       void api.playerStop();
+      void api.playerClearPreload().catch(() => {});
       set({ status: "stopped", position: 0, buffering: false });
+      if (get().queue.length) scheduleSessionSave(get);
     },
 
     next: (auto = false) => {
@@ -304,7 +588,14 @@ export const usePlayer = create<PlayerStore>((set, get) => {
         duration > 0 ? Math.min(position, duration) : position,
       );
       void api.playerSeek(target);
-      set({ position: target });
+      const restored = get().restoredPosition;
+      set(
+        restored != null
+          ? { position: target, restoredPosition: target }
+          : { position: target },
+      );
+      scheduleSessionSave(get);
+      armSleepOnNewTrack(get);
     },
 
     seekRelative: (delta) => {
@@ -355,6 +646,8 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       }
 
       void api.setPlaybackModes(shuffle, get().repeat);
+      scheduleSessionSave(get);
+      get().preloadNext();
     },
 
     cycleRepeat: () => {
@@ -367,6 +660,8 @@ export const usePlayer = create<PlayerStore>((set, get) => {
     setRepeat: (repeat) => {
       set({ repeat });
       void api.setPlaybackModes(get().shuffle, repeat);
+      scheduleSessionSave(get);
+      get().preloadNext();
     },
 
     playSongs: (songs, startIndex = 0) => {
@@ -409,6 +704,8 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       const { queue, baseQueue, currentIndex } = get();
       if (!queue.length) {
         set({ queue: [song], baseQueue: [song], currentIndex: 0 });
+        scheduleSessionSave(get);
+        get().preloadNext();
         return;
       }
       const nextQueue = [...queue];
@@ -418,6 +715,8 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       const baseIndex = current ? nextBase.indexOf(current) : nextBase.length - 1;
       nextBase.splice(baseIndex + 1, 0, song);
       set({ queue: nextQueue, baseQueue: nextBase });
+      scheduleSessionSave(get);
+      get().preloadNext();
     },
 
     addToQueue: (song) => {
@@ -426,6 +725,8 @@ export const usePlayer = create<PlayerStore>((set, get) => {
         queue: [...queue, song],
         baseQueue: [...baseQueue, song],
       });
+      scheduleSessionSave(get);
+      get().preloadNext();
     },
 
     removeFromQueue: (index) => {
@@ -440,7 +741,16 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       else if (index === currentIndex) nextIndex = Math.min(index, nextQueue.length - 1);
 
       if (!nextQueue.length) {
-        set({ queue: [], baseQueue: nextBase, currentIndex: 0, track: null });
+        cancelScheduledSessionSave();
+        void api.clearPlayerSession().catch(() => {});
+        void api.playerClearPreload().catch(() => {});
+        set({
+          queue: [],
+          baseQueue: nextBase,
+          currentIndex: 0,
+          track: null,
+          restoredPosition: null,
+        });
         get().stop();
         return;
       }
@@ -450,6 +760,8 @@ export const usePlayer = create<PlayerStore>((set, get) => {
         baseQueue: nextBase,
         currentIndex: Math.max(0, nextIndex),
       });
+      scheduleSessionSave(get);
+      get().preloadNext();
 
       if (index === currentIndex) {
         loadIndex(Math.min(index, nextQueue.length - 1));
@@ -482,11 +794,17 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       } else {
         set({ queue: nextQueue, baseQueue, currentIndex: nextIndex });
       }
+      scheduleSessionSave(get);
+      get().preloadNext();
     },
 
     clearQueue: () => {
       maybeSubmitScrobble();
       scrobbleId = null;
+      cancelScheduledSessionSave();
+      void api.clearPlayerSession().catch(() => {});
+      void api.playerClearPreload().catch(() => {});
+      void api.playerCancelSleep().catch(() => {});
       set({
         queue: [],
         baseQueue: [],
@@ -495,11 +813,17 @@ export const usePlayer = create<PlayerStore>((set, get) => {
         status: "stopped",
         position: 0,
         duration: 0,
+        restoredPosition: null,
+        sleepMode: null,
+        sleepTimerEndsAt: null,
+        sleepTimerMinutes: null,
       });
+      clearSleepTimers();
       void api.playerStop();
     },
 
-    setNowPlayingOpen: (open) => set({ nowPlayingOpen: open }),
+    setNowPlayingOpen: (open) =>
+      set(open ? { nowPlayingOpen: true, queueOpen: false } : { nowPlayingOpen: false }),
     setQueueOpen: (open) => set({ queueOpen: open }),
 
     toggleMini: async () => {
@@ -513,33 +837,72 @@ export const usePlayer = create<PlayerStore>((set, get) => {
     },
 
     setSleepTimer: (minutes) => {
-      if (sleepTimeout != null) {
-        window.clearTimeout(sleepTimeout);
-        sleepTimeout = null;
-      }
+      clearSleepTimers();
+      void api.playerCancelSleep().catch(() => {});
 
       if (minutes == null || minutes <= 0) {
-        set({ sleepTimerEndsAt: null, sleepTimerMinutes: null });
+        set({ sleepTimerEndsAt: null, sleepTimerMinutes: null, sleepMode: null });
         return;
       }
 
       const endsAt = Date.now() + minutes * 60_000;
-      set({ sleepTimerEndsAt: endsAt, sleepTimerMinutes: minutes });
+      set({
+        sleepTimerEndsAt: endsAt,
+        sleepTimerMinutes: minutes,
+        sleepMode: "minutes",
+      });
+
+      // Start a gentle 20 s fade slightly before the deadline; the engine
+      // pauses itself when the ramp completes.
+      const fadeDelay = Math.max(0, endsAt - Date.now() - 20_000);
+      sleepFadeTimeout = window.setTimeout(() => {
+        sleepFadeTimeout = null;
+        if (get().sleepTimerEndsAt === endsAt) {
+          void api.playerFadeOut(20, true).catch(() => {});
+        }
+      }, fadeDelay);
 
       sleepTimeout = window.setTimeout(
         () => {
           sleepTimeout = null;
           const state = get();
-          if (
-            state.sleepTimerEndsAt != null &&
-            Date.now() >= state.sleepTimerEndsAt
-          ) {
-            set({ sleepTimerEndsAt: null, sleepTimerMinutes: null });
+          if (state.sleepTimerEndsAt === endsAt) {
+            set({
+              sleepTimerEndsAt: null,
+              sleepTimerMinutes: null,
+              sleepMode: null,
+            });
             state.pause();
           }
         },
-        minutes * 60_000,
+        Math.max(0, endsAt - Date.now()),
       );
+    },
+
+    setSleepMode: (mode) => {
+      clearSleepTimers();
+      void api.playerCancelSleep().catch(() => {});
+
+      if (mode == null) {
+        set({
+          sleepMode: null,
+          sleepTimerEndsAt: null,
+          sleepTimerMinutes: null,
+        });
+        return;
+      }
+
+      set({
+        sleepMode: mode,
+        sleepTimerEndsAt: null,
+        sleepTimerMinutes: null,
+      });
+
+      if (mode === "endOfTrack") {
+        void api.playerSleepAtEnd(20).catch(() => {});
+      } else if (mode === "endOfQueue") {
+        armSleepQueueEnd(get);
+      }
     },
 
     clearError: () => set({ error: null }),

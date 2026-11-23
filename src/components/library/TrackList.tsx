@@ -1,13 +1,15 @@
 import { Heart, MoreHorizontal, Play } from "lucide-react";
-import type { MouseEvent } from "react";
+import { useState } from "react";
+import type { DragEvent, MouseEvent } from "react";
 
-import { formatTime } from "../../lib/format";
+import { formatTime, isExplicit } from "../../lib/format";
 import type { Song } from "../../lib/types";
 import { useContextMenu } from "../../store/contextMenu";
 import { useLibrary } from "../../store/library";
 import { usePlayer } from "../../store/player";
 import styles from "../../styles/library.module.css";
 import { Artwork } from "../ui/Artwork";
+import { ExplicitBadge } from "../ui/ExplicitBadge";
 
 function Equalizer({ playing }: { playing: boolean }) {
   return (
@@ -30,8 +32,14 @@ interface TrackRowProps {
   showArtwork: boolean;
   showAlbum: boolean;
   columns: string;
+  draggable: boolean;
+  dragOver: boolean;
   onPlay: () => void;
   onMore: (x: number, y: number) => void;
+  onDragStart: () => void;
+  onDragOver: (event: DragEvent) => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 }
 
 function TrackRow({
@@ -42,8 +50,14 @@ function TrackRow({
   showArtwork,
   showAlbum,
   columns,
+  draggable,
+  dragOver,
   onPlay,
   onMore,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: TrackRowProps) {
   const starred = useLibrary((state) =>
     state.isStarred("song", song.id, song.starred),
@@ -52,7 +66,17 @@ function TrackRow({
 
   return (
     <div
-      className={`${styles.row} ${columns} ${active ? styles.rowActive : ""}`}
+      className={`${styles.row} ${columns} ${active ? styles.rowActive : ""} ${
+        dragOver ? styles.rowDragOver : ""
+      }`}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop();
+      }}
+      onDragEnd={onDragEnd}
       onDoubleClick={onPlay}
       onContextMenu={(event: MouseEvent) => {
         event.preventDefault();
@@ -92,8 +116,11 @@ function TrackRow({
       ) : null}
 
       <div className={styles.main}>
-        <div className={styles.title} title={song.title}>
-          {song.title || "Unknown title"}
+        <div className={styles.titleRow}>
+          <span className={styles.title} title={song.title}>
+            {song.title || "Unknown title"}
+          </span>
+          {isExplicit(song) ? <ExplicitBadge /> : null}
         </div>
         {song.artist ? (
           <div className={styles.sub} title={song.artist}>
@@ -147,6 +174,10 @@ interface TrackListProps {
   showHeader?: boolean;
   startNumber?: number;
   className?: string;
+  /** When provided, rows become draggable and reorderable. */
+  onMove?: (from: number, to: number) => void;
+  /** Override the context-menu handler (defaults to the global song menu). */
+  onMore?: (song: Song, x: number, y: number, index: number) => void;
 }
 
 export function TrackList({
@@ -156,11 +187,23 @@ export function TrackList({
   showHeader = true,
   startNumber = 1,
   className = "",
+  onMove,
+  onMore,
 }: TrackListProps) {
   const currentId = usePlayer((state) => state.track?.id);
   const status = usePlayer((state) => state.status);
   const playSongs = usePlayer((state) => state.playSongs);
   const openMenu = useContextMenu((state) => state.open);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  const handleDrop = (target: number) => {
+    if (dragIndex != null && dragIndex !== target) {
+      onMove?.(dragIndex, target);
+    }
+    setDragIndex(null);
+    setOverIndex(null);
+  };
 
   const columns =
     !showArtwork && !showAlbum
@@ -198,8 +241,23 @@ export function TrackList({
             showArtwork={showArtwork}
             showAlbum={showAlbum}
             columns={columns}
+            draggable={Boolean(onMove)}
+            dragOver={overIndex === index && dragIndex !== index}
             onPlay={() => playSongs(songs, index)}
-            onMore={(x, y) => openMenu(song, x, y)}
+            onMore={(x, y) =>
+              onMore ? onMore(song, x, y, index) : openMenu(song, x, y)
+            }
+            onDragStart={() => setDragIndex(index)}
+            onDragOver={(event) => {
+              if (!onMove) return;
+              event.preventDefault();
+              setOverIndex(index);
+            }}
+            onDrop={() => handleDrop(index)}
+            onDragEnd={() => {
+              setDragIndex(null);
+              setOverIndex(null);
+            }}
           />
         );
       })}

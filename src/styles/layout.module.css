@@ -7,6 +7,11 @@
   background: var(--bg);
 }
 
+/* Fullscreen is open: the player bar is unmounted and its row collapses. */
+.appImmersive {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .sidebar {
   grid-column: 1;
   grid-row: 1;
@@ -236,6 +241,14 @@
 .toastClose:hover {
   color: var(--text);
   background: var(--surface-3);
+}
+
+.infoToast {
+  bottom: calc(var(--player-h) + 68px);
+}
+.infoIcon {
+  color: var(--success);
+  flex-shrink: 0;
 }
 
 @media (max-width: 1040px) {

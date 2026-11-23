@@ -1,11 +1,16 @@
-import { Pause, Play, Trash2, X } from "lucide-react";
+import { ListPlus, Pause, Play, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DragEvent } from "react";
 
+import { isExplicit } from "../lib/format";
+import { api } from "../lib/ipc";
 import { usePlayer } from "../store/player";
+import { useToast } from "../store/toast";
 import styles from "../styles/player.module.css";
 import ui from "../styles/ui.module.css";
 import { Artwork } from "./ui/Artwork";
+import { PromptDialog } from "./ui/Dialog";
+import { ExplicitBadge } from "./ui/ExplicitBadge";
 
 export function QueuePanel() {
   const open = usePlayer((state) => state.queueOpen);
@@ -20,17 +25,20 @@ export function QueuePanel() {
   const clearQueue = usePlayer((state) => state.clearQueue);
   const toggle = usePlayer((state) => state.toggle);
 
+  const toast = useToast((state) => state.show);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape" && !saveOpen) setOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, setOpen]);
+  }, [open, saveOpen, setOpen]);
 
   if (!open) return null;
 
@@ -44,7 +52,24 @@ export function QueuePanel() {
     setOverIndex(null);
   };
 
+  const handleSaveQueue = async (name: string) => {
+    setSaving(true);
+    try {
+      await api.createPlaylist(
+        name,
+        queue.map((song) => song.id),
+      );
+      toast(`Saved “${name}”`);
+      setSaveOpen(false);
+    } catch (err) {
+      usePlayer.getState().onError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
+    <>
     <aside className={styles.queuePanel} aria-label="Play queue">
       <div className={styles.queueHead}>
         <div>
@@ -54,6 +79,16 @@ export function QueuePanel() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
+          <button
+            type="button"
+            className={ui.iconBtn}
+            onClick={() => setSaveOpen(true)}
+            disabled={!queue.length}
+            aria-label="Save queue as playlist"
+            title="Save queue as playlist"
+          >
+            <ListPlus size={16} />
+          </button>
           <button
             type="button"
             className={ui.iconBtn}
@@ -85,7 +120,10 @@ export function QueuePanel() {
             className={styles.queueNowArt}
           />
           <div className={styles.queueNowMain}>
-            <div className={styles.queueItemTitle}>{track.title}</div>
+            <div className={styles.queueTitleRow}>
+              <span className={styles.queueItemTitle}>{track.title}</span>
+              {isExplicit(track) ? <ExplicitBadge /> : null}
+            </div>
             <div className={styles.queueItemArtist}>{track.artist ?? ""}</div>
           </div>
           <button
@@ -162,7 +200,10 @@ export function QueuePanel() {
                   style={{ width: 38, height: 38, flexShrink: 0 }}
                 />
                 <span className={styles.queueMain}>
-                  <span className={styles.queueItemTitle}>{song.title}</span>
+                  <span className={styles.queueTitleRow}>
+                    <span className={styles.queueItemTitle}>{song.title}</span>
+                    {isExplicit(song) ? <ExplicitBadge /> : null}
+                  </span>
                   <span className={styles.queueItemArtist}>
                     {song.artist ?? ""}
                   </span>
@@ -183,6 +224,18 @@ export function QueuePanel() {
           })
         )}
       </div>
+
+      <PromptDialog
+        open={saveOpen}
+        title="Save queue as playlist"
+        label="Playlist name"
+        placeholder="Tonight's queue"
+        confirmLabel="Save"
+        busy={saving}
+        onConfirm={(name) => void handleSaveQueue(name)}
+        onCancel={() => setSaveOpen(false)}
+      />
     </aside>
+    </>
   );
 }

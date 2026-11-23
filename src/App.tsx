@@ -7,17 +7,20 @@ import { PlayerBar } from "./components/PlayerBar";
 import { QueuePanel } from "./components/QueuePanel";
 import { Sidebar } from "./components/Sidebar";
 import { SongContextMenu } from "./components/ui/SongContextMenu";
+import { ToastHost } from "./components/ui/ToastHost";
 import { subscribePlayerEvents } from "./lib/ipc";
 import type { RepeatMode } from "./lib/types";
 import { usePlayer } from "./store/player";
 import { useSession } from "./store/session";
-import { useSettings } from "./store/settings";
+import { isConfigured, useSettings } from "./store/settings";
 import styles from "./styles/layout.module.css";
 import ui from "./styles/ui.module.css";
 import { AlbumView } from "./views/AlbumView";
 import { AlbumsView } from "./views/AlbumsView";
 import { ArtistView } from "./views/ArtistView";
 import { ArtistsView } from "./views/ArtistsView";
+import { GenreView } from "./views/GenreView";
+import { GenresView } from "./views/GenresView";
 import { Home } from "./views/Home";
 import { LikedView } from "./views/LikedView";
 import { PlaylistView } from "./views/PlaylistView";
@@ -77,14 +80,21 @@ function handleUiCommand(action: string, value?: string) {
 function useAppBootstrap() {
   const loadSettings = useSettings((state) => state.load);
   const initPlayer = usePlayer((state) => state.init);
+  const restoreSession = usePlayer((state) => state.restoreSession);
   const loadSession = useSession((state) => state.load);
   const accent = useSettings((state) => state.settings?.accent ?? "blue");
 
   useEffect(() => {
-    void loadSettings();
-    void initPlayer();
-    void loadSession();
-  }, [loadSettings, initPlayer, loadSession]);
+    async function boot() {
+      await loadSettings();
+      await initPlayer();
+      await loadSession();
+      if (isConfigured(useSettings.getState().settings)) {
+        await restoreSession();
+      }
+    }
+    void boot();
+  }, [loadSettings, initPlayer, loadSession, restoreSession]);
 
   useEffect(() => {
     const unsubscribe = subscribePlayerEvents({
@@ -99,6 +109,7 @@ function useAppBootstrap() {
         usePlayer.getState().setWaveform(event.trackId, event.peaks),
       session: (snapshot) => useSession.getState().setSnapshot(snapshot),
       command: (command) => handleUiCommand(command.action, command.value),
+      advanced: (event) => usePlayer.getState().onAdvanced(event.trackId),
     });
     return unsubscribe;
   }, []);
@@ -176,12 +187,15 @@ export default function App() {
   const loaded = useSettings((state) => state.loaded);
   const error = usePlayer((state) => state.error);
   const clearError = usePlayer((state) => state.clearError);
+  const nowPlayingOpen = usePlayer((state) => state.nowPlayingOpen);
 
   if (!loaded) return <Splash />;
 
   return (
     <HashRouter>
-      <div className={styles.app}>
+      <div
+        className={`${styles.app} ${nowPlayingOpen ? styles.appImmersive : ""}`}
+      >
         <Sidebar />
         <main className={styles.main}>
           <Routes>
@@ -192,6 +206,8 @@ export default function App() {
             <Route path="/artists/:id" element={<ArtistView />} />
             <Route path="/albums" element={<AlbumsView />} />
             <Route path="/albums/:id" element={<AlbumView />} />
+            <Route path="/genres" element={<GenresView />} />
+            <Route path="/genres/:name" element={<GenreView />} />
             <Route path="/playlists" element={<PlaylistsView />} />
             <Route path="/playlists/:id" element={<PlaylistView />} />
             <Route path="/liked" element={<LikedView />} />
@@ -199,14 +215,17 @@ export default function App() {
             <Route path="*" element={<Home />} />
           </Routes>
         </main>
-        <div className={styles.playerSlot}>
-          <PlayerBar />
-        </div>
+        {nowPlayingOpen ? null : (
+          <div className={styles.playerSlot}>
+            <PlayerBar />
+          </div>
+        )}
       </div>
 
       <NowPlaying />
       <QueuePanel />
       <SongContextMenu />
+      <ToastHost />
 
       {error ? (
         <div className={styles.errorToast} role="alert">

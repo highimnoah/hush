@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::ReplayGainMode;
+use crate::config::{ReplayGainMode, TransitionMode};
 use crate::discord::DiscordHandle;
 use crate::mpris::MprisHandle;
 use self::waveform::WaveformHandle;
@@ -53,6 +53,9 @@ pub struct TrackInfo {
     pub sampling_rate: Option<u32>,
     #[serde(default)]
     pub channel_count: Option<u32>,
+    /// OpenSubsonic/Navidrome explicit content status ("explicit" | "clean" | "").
+    #[serde(default)]
+    pub explicit_status: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -69,7 +72,11 @@ pub struct PlayerSnapshot {
 }
 
 pub enum Command {
-    Load { url: String, track: TrackInfo },
+    Load {
+        url: String,
+        track: TrackInfo,
+        start_position: f64,
+    },
     Play,
     Pause,
     Stop,
@@ -79,6 +86,21 @@ pub enum Command {
     SetMute(bool),
     SetReplayGain(ReplayGainMode),
     SetPreamp(f64),
+    Preload {
+        url: String,
+        track: TrackInfo,
+    },
+    ClearPreload,
+    SetLevelsEnabled(bool),
+    SetTransition(TransitionMode, f64),
+    FadeOut {
+        seconds: f64,
+        pause_after: bool,
+    },
+    SleepAtTrackEnd {
+        fade_seconds: f64,
+    },
+    CancelSleep,
 }
 
 #[derive(Clone)]
@@ -113,6 +135,8 @@ impl PlayerHandle {
         muted: bool,
         replaygain: ReplayGainMode,
         preamp: f64,
+        transition_mode: TransitionMode,
+        fade_seconds: f64,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
         let snapshot = Arc::new(Mutex::new(PlayerSnapshot {
@@ -137,6 +161,8 @@ impl PlayerHandle {
                     muted,
                     replaygain,
                     preamp,
+                    transition_mode,
+                    fade_seconds,
                 );
             });
 

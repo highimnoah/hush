@@ -2,8 +2,9 @@ import { ChevronUp, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Artwork } from "./components/ui/Artwork";
+import { ExplicitBadge } from "./components/ui/ExplicitBadge";
 import { Slider } from "./components/ui/Slider";
-import { formatTime } from "./lib/format";
+import { formatTime, isExplicit } from "./lib/format";
 import { api, subscribePlayerEvents } from "./lib/ipc";
 import type { PlaybackStatus, TrackInfo } from "./lib/types";
 import styles from "./styles/mini.module.css";
@@ -83,8 +84,11 @@ export default function MiniApp() {
             />
           </div>
           <div className={styles.meta} data-tauri-drag-region>
-            <div className={styles.title} data-tauri-drag-region>
-              {track?.title ?? "Nothing playing"}
+            <div className={styles.titleRow} data-tauri-drag-region>
+              <span className={styles.title} data-tauri-drag-region>
+                {track?.title ?? "Nothing playing"}
+              </span>
+              {isExplicit(track) ? <ExplicitBadge /> : null}
             </div>
             <div className={styles.artist} data-tauri-drag-region>
               {track?.artist ?? "hush"}
