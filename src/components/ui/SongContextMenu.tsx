@@ -1,6 +1,7 @@
 import {
   ChevronLeft,
   Disc3,
+  FileText,
   ListPlus,
   Play,
   Plus,
@@ -195,6 +196,18 @@ export function SongContextMenu() {
             >
               <Star size={15} fill={starred ? "currentColor" : "none"} />
               {starred ? "Remove from favorites" : "Add to favorites"}
+            </button>
+
+            <button
+              type="button"
+              className={ui.menuItem}
+              onClick={() => {
+                navigate(`/lyrics/${song.id}`);
+                close();
+              }}
+            >
+              <FileText size={15} />
+              Edit lyrics
             </button>
 
             {playlist ? (

@@ -27,6 +27,8 @@ import { GenreView } from "./views/GenreView";
 import { GenresView } from "./views/GenresView";
 import { Home } from "./views/Home";
 import { LikedView } from "./views/LikedView";
+import { LyricsEditorView } from "./views/LyricsEditorView";
+import { LyricsView } from "./views/LyricsView";
 import { PlaylistView } from "./views/PlaylistView";
 import { PlaylistsView } from "./views/PlaylistsView";
 import { SearchView } from "./views/SearchView";
@@ -235,6 +237,8 @@ export default function App() {
             <Route path="/playlists" element={<PlaylistsView />} />
             <Route path="/playlists/:id" element={<PlaylistView />} />
             <Route path="/liked" element={<LikedView />} />
+            <Route path="/lyrics" element={<LyricsView />} />
+            <Route path="/lyrics/:trackId" element={<LyricsEditorView />} />
             <Route path="/settings" element={<SettingsView />} />
             <Route path="*" element={<Home />} />
           </Routes>

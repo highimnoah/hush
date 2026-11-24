@@ -1,11 +1,16 @@
+import { Pencil } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../../lib/ipc";
+import {
+  cachedLyrics,
+  LYRICS_CHANGED_EVENT,
+  rememberLyrics,
+} from "../../lib/lyrics";
 import type { LyricLine, Lyrics } from "../../lib/types";
 import { usePlayer } from "../../store/player";
 import styles from "../../styles/player.module.css";
-
-const cache = new Map<string, Lyrics>();
 
 function normalizeLines(
   lyrics: Lyrics | null,
@@ -33,19 +38,32 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
   const position = usePlayer((state) => state.position);
   const duration = usePlayer((state) => state.duration);
   const seek = usePlayer((state) => state.seek);
+  const setNowPlayingOpen = usePlayer((state) => state.setNowPlayingOpen);
+  const navigate = useNavigate();
 
+  const [reloadKey, setReloadKey] = useState(0);
   const [lyrics, setLyrics] = useState<Lyrics | null>(
-    () => cache.get(trackId) ?? null,
+    () => cachedLyrics(trackId) ?? null,
   );
-  const [loading, setLoading] = useState(!cache.has(trackId));
+  const [loading, setLoading] = useState(!cachedLyrics(trackId));
   const [error, setError] = useState<string | null>(null);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
+  // Refresh whenever the editor saves or removes local lyrics.
+  useEffect(() => {
+    const onChange = (event: Event) => {
+      const detail = (event as CustomEvent<string | undefined>).detail;
+      if (!detail || detail === trackId) setReloadKey((value) => value + 1);
+    };
+    window.addEventListener(LYRICS_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(LYRICS_CHANGED_EVENT, onChange);
+  }, [trackId]);
+
   useEffect(() => {
     let cancelled = false;
-    const cached = cache.get(trackId);
+    const cached = cachedLyrics(trackId);
     if (cached) {
       setLyrics(cached);
       setLoading(false);
@@ -60,7 +78,7 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
     api
       .getLyrics(trackId)
       .then((value) => {
-        cache.set(trackId, value);
+        rememberLyrics(trackId, value);
         if (!cancelled) setLyrics(value);
       })
       .catch((err: unknown) => {
@@ -73,7 +91,7 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [trackId]);
+  }, [trackId, reloadKey]);
 
   const lines = useMemo(
     () => normalizeLines(lyrics, duration),
@@ -99,15 +117,16 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
     scroller.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
   }, [activeIndex]);
 
-  if (loading) {
-    return <div className={styles.lyricsEmpty}>Loading lyrics…</div>;
-  }
-  if (error) {
-    return <div className={styles.lyricsEmpty}>{error}</div>;
-  }
+  const hasLyrics = Boolean(lines.length || lyrics?.plain);
+  const editLabel = hasLyrics ? "Edit" : "Add lyrics";
 
-  if (lines.length) {
-    return (
+  let body;
+  if (loading) {
+    body = <div className={styles.lyricsEmpty}>Loading lyrics…</div>;
+  } else if (error) {
+    body = <div className={styles.lyricsEmpty}>{error}</div>;
+  } else if (lines.length) {
+    body = (
       <div className={`${styles.lyricsScroll} ${className}`} ref={scrollerRef}>
         <div className={styles.lyricsLines}>
           {lines.map((line, index) => (
@@ -126,15 +145,37 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
         </div>
       </div>
     );
-  }
-
-  if (lyrics?.plain) {
-    return (
+  } else if (lyrics?.plain) {
+    body = (
       <div className={`${styles.lyricsScroll} ${className}`} ref={scrollerRef}>
         <div className={styles.lyricsPlain}>{lyrics.plain}</div>
       </div>
     );
+  } else {
+    body = (
+      <div className={styles.lyricsEmpty}>No lyrics for this track.</div>
+    );
   }
 
-  return <div className={styles.lyricsEmpty}>No lyrics for this track.</div>;
+  return (
+    <div className={styles.lyricsWrap}>
+      <div className={styles.lyricsToolbar}>
+        {lyrics?.source === "local" ? (
+          <span className={styles.lyricsLocalBadge}>Local</span>
+        ) : null}
+        <button
+          type="button"
+          className={styles.lyricsEdit}
+          onClick={() => {
+            setNowPlayingOpen(false);
+            navigate(`/lyrics/${trackId}`);
+          }}
+        >
+          <Pencil size={13} />
+          {editLabel}
+        </button>
+      </div>
+      {body}
+    </div>
+  );
 }

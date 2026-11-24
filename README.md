@@ -21,6 +21,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Real waveform seek bar in the player bar and the fullscreen view (decoded in Rust and cached); the bar is hidden while the fullscreen view is open so only one timeline is visible.
 - Fullscreen Now Playing view with a calm dim backdrop, a toggleable sidebar (queue, lyrics, technical info), and an inline volume control.
 - Synced or plain lyrics from the server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
+- Local lyrics layer and editor: tap-sync lines to playback, nudge/distribute timings, import and export `.lrc` files, and manage every edited track from a dedicated Lyrics view. Local lyrics override server lyrics in hush.
 - Now Playing track information (format, bit depth, sample rate, bitrate, channels, ReplayGain gain, server) plus an explicit-content badge.
 - Favorites for songs (heart in track lists) and albums (hero + card).
 - Playlist editing: create, rename, delete, add/remove songs, and drag-to-reorder.
@@ -50,6 +51,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 ┌──────────────┴───────────────────────────────▼───────────────────────────────┐
 │  Rust core                                                                   │
 │  ├─ config.rs        settings persistence (atomic JSON write)                │
+│  ├─ lyrics.rs        local LRC storage, parser and serializer               │
 │  ├─ session_state.rs resumable queue/position snapshot (atomic JSON)         │
 │  ├─ server/          MusicServer trait + SubsonicClient (reqwest + rustls)   │
 │  ├─ player/engine.rs playbin (audio-filter: rgvolume → fade → volume →      │
@@ -113,9 +115,10 @@ hush-tauri/
 │   │   └── ui/                  Artwork · Slider · WaveformSeek · LyricsPanel ·
 │   │                            Dialog · ToastHost · UpdateDialog · WindowControls ·
 │   │                            ExplicitBadge · Switch · states · context menu
-│   ├── views/                   Home · Search · Together · Artists · Albums · Genres · Playlists · Liked · Settings
+│   ├── views/                   Home · Search · Together · Artists · Albums · Genres · Playlists · Liked ·
+│   │                            Lyrics · LyricsEditor · Settings
 │   ├── store/                   player.ts · library.ts · session.ts · settings.ts · updater.ts · contextMenu.ts
-│   ├── lib/                     ipc.ts · types.ts · format.ts · waveform.ts · useAsync.ts · hooks.ts
+│   ├── lib/                     ipc.ts · types.ts · format.ts · lyrics.ts · waveform.ts · useAsync.ts · hooks.ts
 │   └── styles/                  tokens.css · global.css · *.module.css
 ├── hush-sync/                   # self-hosted Listen Together relay
 │   ├── Cargo.toml · Dockerfile · README.md
@@ -131,6 +134,7 @@ hush-tauri/
     ├── gstreamer-runtime/       # Windows runtime staging (binaries gitignored)
     └── src/
         ├── main.rs · lib.rs · commands.rs · config.rs · error.rs · events.rs · playback.rs
+        ├── lyrics.rs  (local .lrc parser, storage and export helpers)
         ├── session_state.rs  (resumable queue/position snapshot)
         ├── server/  mod.rs (trait) · subsonic.rs · types.rs
         ├── player/  mod.rs · engine.rs · waveform.rs
@@ -460,6 +464,25 @@ Set the relay URL in **Settings → Listen together** (`ws://host:8787`). For re
 
 ---
 
+## Lyrics editor and .lrc files
+
+Navidrome/Subsonic can serve lyrics but has no endpoint for writing them, so hush keeps its own editable lyrics layer on top of the server:
+
+- **Local storage** — edited lyrics live in `<app data>/lyrics/<track-id>.lrc` (on Linux `~/.local/share/app.hush.desktop/lyrics/`; track IDs are hex-encoded in the filename so they are always filesystem-safe). Writes are atomic.
+- **Precedence** — a local file always overrides server lyrics inside hush, and the lyrics panel shows a small **Local** badge. Server lyrics remain visible and editable: saving creates a local copy without touching the server.
+- **Editor route** — open **Lyrics** in the sidebar, or use the pencil in the lyrics panel / the song context menu. The editor (`#/lyrics/:trackId`) includes:
+  - a real waveform timeline and transport for the track;
+  - **Tap** sync (button or `T`) that stamps the selected — or next untimed — line with the *exact* pipeline position, then advances;
+  - per-line timestamp editing, ±100 ms nudges, shift-all, even distribution, sort-by-time and undo;
+  - import of `.lrc`/`.txt` files and export back to `.lrc`;
+  - validation hints for untimed, duplicate and out-of-order lines.
+- **Management view** — `#/lyrics` lists local lyrics and searches the library, showing a lazily loaded status for each result: *Local*, *Synced (server)*, *Plain (server)* or *None*.
+- **Navidrome bridge** — export the `.lrc` next to the audio file on the server's music mount and trigger a Navidrome rescan. Navidrome then serves those lyrics natively, including to other clients. hush does not upload files itself.
+
+The lyrics editor needs the track's audio to be playable, so it relies on the configured Navidrome/Subsonic server for playback while the lyric text itself stays local.
+
+---
+
 ## Keyboard shortcuts
 
 | Keys | Action |
@@ -468,6 +491,9 @@ Set the relay URL in **Settings → Listen together** (`ws://host:8787`). For re
 | `Ctrl` + `→` / `←` | Next / previous |
 | `Ctrl` + `↑` / `↓` | Volume up / down |
 | `Ctrl` + `M` | Mute toggle |
+| `T` (lyrics editor) | Tap-sync the selected / next untimed line |
+| `↑` / `↓` (lyrics editor) | Select the previous / next line |
+| `Z` (lyrics editor) | Undo the last timing edit |
 | `Esc` | Close the fullscreen sidebar, then the view / queue |
 
 Media keys and desktop media controls are handled via MPRIS.

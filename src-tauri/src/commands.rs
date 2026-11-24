@@ -121,7 +121,98 @@ pub async fn get_random_songs(
 
 #[tauri::command]
 pub async fn get_lyrics(state: State<'_, AppState>, id: String) -> Result<Lyrics> {
-    build_server(&state)?.lyrics(&id).await
+    // hush's editable local layer always wins over server lyrics.
+    if let Some(local) = state.lyrics.get(&id) {
+        let has_synced = local
+            .synced
+            .as_ref()
+            .map(|lines| !lines.is_empty())
+            .unwrap_or(false);
+        let parsed = crate::lyrics::ParsedLrc {
+            lines: local.lines,
+            meta: local.meta,
+            plain: local.plain,
+            synced: local.synced,
+            has_synced,
+        };
+        return Ok(crate::lyrics::to_lyrics(
+            &parsed,
+            crate::server::types::LyricsSource::Local,
+        ));
+    }
+
+    let mut lyrics = build_server(&state)?.lyrics(&id).await?;
+    if lyrics.plain.is_none() && lyrics.synced.is_none() {
+        lyrics.source = crate::server::types::LyricsSource::None;
+    }
+    Ok(lyrics)
+}
+
+#[tauri::command]
+pub fn get_local_lyrics(
+    state: State<'_, AppState>,
+    track_id: String,
+) -> Option<crate::lyrics::LocalLyrics> {
+    state.lyrics.get(&track_id)
+}
+
+#[tauri::command]
+pub fn list_local_lyrics(state: State<'_, AppState>) -> Vec<crate::lyrics::LocalLyricsSummary> {
+    state.lyrics.list()
+}
+
+#[tauri::command]
+pub fn save_local_lyrics(
+    state: State<'_, AppState>,
+    track_id: String,
+    lines: Vec<crate::lyrics::LrcLine>,
+    meta: crate::lyrics::LrcMeta,
+) -> Result<crate::lyrics::LocalLyrics> {
+    state.lyrics.save(&track_id, &lines, &meta)
+}
+
+#[tauri::command]
+pub fn delete_local_lyrics(state: State<'_, AppState>, track_id: String) -> Result<()> {
+    state.lyrics.delete(&track_id)
+}
+
+/// Write a local lyrics file to an arbitrary path (e.g. next to the audio file
+/// on a mounted library so Navidrome picks it up on its next scan).
+#[tauri::command]
+pub fn export_lyrics_file(
+    state: State<'_, AppState>,
+    track_id: String,
+    path: String,
+) -> Result<()> {
+    let local = state
+        .lyrics
+        .get(&track_id)
+        .ok_or_else(|| HushError::Other("There are no saved lyrics for this track.".into()))?;
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(&path, local.text)?;
+    Ok(())
+}
+
+/// Read an `.lrc`/`.txt` file from disk and parse it for the editor.
+#[tauri::command]
+pub fn import_lyrics_file(path: String) -> Result<crate::lyrics::ImportedLyrics> {
+    let text = std::fs::read_to_string(&path)?;
+    let parsed = crate::lyrics::parse(&text);
+    Ok(crate::lyrics::ImportedLyrics {
+        text,
+        plain: parsed.plain,
+        lines: parsed.lines,
+        meta: parsed.meta,
+    })
+}
+
+#[tauri::command]
+pub fn player_position_now(state: State<'_, AppState>) -> f64 {
+    state.player.position_now()
 }
 
 #[tauri::command]

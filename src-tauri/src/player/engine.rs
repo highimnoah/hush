@@ -342,6 +342,15 @@ impl Engine {
                 self.prevent_advance.store(true, Ordering::Relaxed);
             }
             Command::CancelSleep => self.cancel_sleep(),
+            Command::QueryPosition(reply) => {
+                let position = self
+                    .pipeline
+                    .as_ref()
+                    .and_then(|pipeline| pipeline.query_position::<gst::ClockTime>())
+                    .map(|position| position.seconds_f64())
+                    .unwrap_or_else(|| self.snap().position);
+                let _ = reply.send(position);
+            }
         }
     }
 

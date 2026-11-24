@@ -520,6 +520,7 @@ impl MusicServer for SubsonicClient {
             title: entry.display_title,
             artist: entry.display_artist,
             album: None,
+            source: LyricsSource::Server,
         })
     }
 

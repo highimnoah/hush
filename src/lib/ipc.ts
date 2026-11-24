@@ -9,6 +9,11 @@ import type {
   ArtistDetail,
   GainEvent,
   Genre,
+  ImportedLyrics,
+  LocalLyrics,
+  LocalLyricsSummary,
+  LrcLine,
+  LrcMeta,
   Lyrics,
   PersistedPlayerState,
   PlaybackStatus,
@@ -51,6 +56,19 @@ export const api = {
   getRandomSongs: (size = 50) =>
     invoke<Song[]>("get_random_songs", { size }),
   getLyrics: (id: string) => invoke<Lyrics>("get_lyrics", { id }),
+  getLocalLyrics: (trackId: string) =>
+    invoke<LocalLyrics | null>("get_local_lyrics", { trackId }),
+  listLocalLyrics: () =>
+    invoke<LocalLyricsSummary[]>("list_local_lyrics"),
+  saveLocalLyrics: (trackId: string, lines: LrcLine[], meta: LrcMeta) =>
+    invoke<LocalLyrics>("save_local_lyrics", { trackId, lines, meta }),
+  deleteLocalLyrics: (trackId: string) =>
+    invoke<void>("delete_local_lyrics", { trackId }),
+  exportLyricsFile: (trackId: string, path: string) =>
+    invoke<void>("export_lyrics_file", { trackId, path }),
+  importLyricsFile: (path: string) =>
+    invoke<ImportedLyrics>("import_lyrics_file", { path }),
+  playerPositionNow: () => invoke<number>("player_position_now"),
   getGenres: () => invoke<Genre[]>("get_genres"),
   getSongsByGenre: (genre: string, size = 200, offset = 0) =>
     invoke<Song[]>("get_songs_by_genre", { genre, size, offset }),

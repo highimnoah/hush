@@ -3,6 +3,7 @@ pub mod config;
 pub mod discord;
 pub mod error;
 pub mod events;
+pub mod lyrics;
 pub mod mpris;
 pub mod playback;
 pub mod player;
@@ -32,6 +33,7 @@ pub struct AppState {
     pub waveforms: WaveformHandle,
     pub session: SessionHandle,
     pub session_store: Arc<SessionStore>,
+    pub lyrics: Arc<lyrics::LyricsStore>,
     pub http: reqwest::Client,
 }
 
@@ -44,6 +46,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -56,6 +59,7 @@ pub fn run() {
             config::ensure_config_dir(&config_dir)?;
             let session_store = Arc::new(SessionStore::load(config_dir.clone()));
             let config = Arc::new(ConfigStore::load(config_dir));
+            let lyrics = Arc::new(lyrics::LyricsStore::load(app.path().app_data_dir()?));
             let settings = config.get();
 
             restore_window_state(app.handle(), &settings);
@@ -98,6 +102,7 @@ pub fn run() {
                 waveforms,
                 session,
                 session_store,
+                lyrics,
                 http,
             });
 
@@ -129,6 +134,13 @@ pub fn run() {
             commands::get_starred,
             commands::get_random_songs,
             commands::get_lyrics,
+            commands::get_local_lyrics,
+            commands::list_local_lyrics,
+            commands::save_local_lyrics,
+            commands::delete_local_lyrics,
+            commands::export_lyrics_file,
+            commands::import_lyrics_file,
+            commands::player_position_now,
             commands::get_genres,
             commands::get_songs_by_genre,
             commands::get_albums_by_genre,

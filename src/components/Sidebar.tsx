@@ -1,5 +1,6 @@
 import {
   Disc3,
+  FileText,
   Handshake,
   Heart,
   Home,
@@ -34,6 +35,7 @@ const libraryItems: NavEntry[] = [
   { to: "/genres", label: "Genres", icon: Music2 },
   { to: "/playlists", label: "Playlists", icon: ListMusic },
   { to: "/liked", label: "Liked", icon: Heart },
+  { to: "/lyrics", label: "Lyrics", icon: FileText },
 ];
 
 function navClass({ isActive }: { isActive: boolean }): string {

@@ -103,12 +103,54 @@ export interface LyricLine {
   text: string;
 }
 
+export type LyricsSource = "none" | "local" | "server";
+
 export interface Lyrics {
   plain: string | null;
   synced: LyricLine[] | null;
   title: string | null;
   artist: string | null;
   album: string | null;
+  source: LyricsSource;
+}
+
+export interface LrcLine {
+  startMs: number | null;
+  text: string;
+}
+
+export interface LrcMeta {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  durationMs: number | null;
+}
+
+export interface LocalLyrics {
+  trackId: string;
+  text: string;
+  plain: string | null;
+  synced: LyricLine[] | null;
+  lines: LrcLine[];
+  meta: LrcMeta;
+  updatedMs: number | null;
+}
+
+export interface LocalLyricsSummary {
+  trackId: string;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  updatedMs: number | null;
+  synced: boolean;
+  lineCount: number;
+}
+
+export interface ImportedLyrics {
+  text: string;
+  plain: string | null;
+  lines: LrcLine[];
+  meta: LrcMeta;
 }
 
 export interface ServerInfo {

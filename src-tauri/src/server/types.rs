@@ -230,6 +230,15 @@ pub struct SearchResults {
     pub songs: Vec<Song>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LyricsSource {
+    #[default]
+    None,
+    Local,
+    Server,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Lyrics {
@@ -243,6 +252,9 @@ pub struct Lyrics {
     pub artist: Option<String>,
     #[serde(default)]
     pub album: Option<String>,
+    /// Where the lyrics came from: `local` (hush's editable layer) or `server`.
+    #[serde(default)]
+    pub source: LyricsSource,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -101,6 +101,8 @@ pub enum Command {
         fade_seconds: f64,
     },
     CancelSleep,
+    /// Ask the engine for the pipeline's exact position (used for lyric tap-sync).
+    QueryPosition(Sender<f64>),
 }
 
 #[derive(Clone)]
@@ -123,6 +125,17 @@ impl PlayerHandle {
             .lock()
             .map(|guard| guard.clone())
             .unwrap_or_default()
+    }
+
+    /// Exact playback position in seconds, queried from the GStreamer pipeline.
+    /// Falls back to the periodically-updated snapshot if the engine is busy.
+    pub fn position_now(&self) -> f64 {
+        let (tx, rx) = mpsc::channel();
+        if self.tx.send(Command::QueryPosition(tx)).is_err() {
+            return self.snapshot().position;
+        }
+        rx.recv_timeout(std::time::Duration::from_millis(250))
+            .unwrap_or_else(|_| self.snapshot().position)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -15,6 +15,8 @@ interface WaveformSeekProps {
   ariaLabel: string;
   className?: string;
   height?: number;
+  /** Analyse this track instead of whatever is currently loaded. */
+  trackId?: string;
 }
 
 /**
@@ -30,17 +32,23 @@ export function WaveformSeek({
   ariaLabel,
   className = "",
   height = 36,
+  trackId: forcedTrackId,
 }: WaveformSeekProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState<number | null>(null);
 
-  const trackId = usePlayer((state) => state.track?.id);
-  const waveform = usePlayer((state) => {
+  const currentTrackId = usePlayer((state) => state.track?.id);
+  const liveWaveform = usePlayer((state) => {
     const id = state.track?.id;
     return id ? state.waveforms[id] : undefined;
   });
+  const storedWaveform = usePlayer((state) =>
+    forcedTrackId ? state.waveforms[forcedTrackId] : undefined,
+  );
+  const trackId = forcedTrackId ?? currentTrackId;
+  const waveform = forcedTrackId ? storedWaveform : liveWaveform;
   const accent = useSettings((state) => state.settings?.accent ?? "blue");
 
   const data = useMemo(() => {
