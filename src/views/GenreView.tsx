@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { AlbumCard } from "../components/library/AlbumCard";
 import { TrackList } from "../components/library/TrackList";
+import { BackButton } from "../components/ui/BackButton";
 import { EmptyState } from "../components/ui/EmptyState";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { Loading } from "../components/ui/States";
@@ -115,6 +116,7 @@ export function GenreView() {
 
   return (
     <div className={styles.page}>
+      <BackButton to="/genres" label="Genres" />
       {songs.loading || albums.loading ? (
         <Loading label="Loading genre…" />
       ) : songs.error ? (

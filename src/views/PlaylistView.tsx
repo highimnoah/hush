@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { TrackList } from "../components/library/TrackList";
 import { AsyncContent } from "../components/ui/AsyncContent";
 import { Artwork } from "../components/ui/Artwork";
+import { BackButton } from "../components/ui/BackButton";
 import { ConfirmDialog, PromptDialog } from "../components/ui/Dialog";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { formatDuration } from "../lib/format";
@@ -222,6 +223,7 @@ export function PlaylistView() {
 
   return (
     <div className={styles.page}>
+      <BackButton to="/playlists" label="Playlists" />
       <AsyncContent state={state} loadingLabel="Loading playlist…">
         {(detail) =>
           detail ? (

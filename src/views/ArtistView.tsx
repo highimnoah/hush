@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { AlbumCard } from "../components/library/AlbumCard";
 import { ArtistAvatar } from "../components/ui/ArtistAvatar";
 import { AsyncContent } from "../components/ui/AsyncContent";
+import { BackButton } from "../components/ui/BackButton";
 import { EmptyState } from "../components/ui/EmptyState";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { CardSkeletonGrid } from "../components/ui/States";
@@ -62,6 +63,7 @@ export function ArtistView() {
 
   return (
     <div className={styles.page}>
+      <BackButton to="/artists" label="Artists" />
       <AsyncContent
         state={state}
         skeleton={<CardSkeletonGrid count={8} />}
