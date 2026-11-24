@@ -5,7 +5,11 @@ import { useNavigate } from "react-router-dom";
 import { ConfirmDialog } from "../components/ui/Dialog";
 import { formatTime } from "../lib/format";
 import { api } from "../lib/ipc";
-import { LYRICS_CHANGED_EVENT, notifyLyricsChanged } from "../lib/lyrics";
+import {
+  LYRICS_CHANGED_EVENT,
+  lyricsMeta,
+  notifyLyricsChanged,
+} from "../lib/lyrics";
 import type {
   LocalLyricsSummary,
   LyricsSource,
@@ -18,11 +22,21 @@ import { useToast } from "../store/toast";
 import styles from "../styles/lyrics.module.css";
 import ui from "../styles/ui.module.css";
 
-type StatusKind = "loading" | "local" | "synced" | "plain" | "none" | "error";
+type StatusKind =
+  | "loading"
+  | "local"
+  | "lrclib"
+  | "lrclibPlain"
+  | "synced"
+  | "plain"
+  | "none"
+  | "error";
 
 const STATUS_LABEL: Record<StatusKind, string> = {
   loading: "Checking…",
   local: "Local",
+  lrclib: "Synced (LRCLIB)",
+  lrclibPlain: "Plain (LRCLIB)",
   synced: "Synced (server)",
   plain: "Plain (server)",
   none: "None",
@@ -33,8 +47,10 @@ function statusClass(kind: StatusKind): string {
   switch (kind) {
     case "local":
       return styles.statusLocal;
+    case "lrclib":
     case "synced":
       return styles.statusSynced;
+    case "lrclibPlain":
     case "plain":
       return styles.statusPlain;
     case "none":
@@ -57,11 +73,11 @@ function formatUpdated(ms: number | null): string {
 }
 
 function LyricsStatus({
-  trackId,
+  song,
   isLocal,
   version,
 }: {
-  trackId: string;
+  song: Song;
   isLocal: boolean;
   version: number;
 }) {
@@ -76,12 +92,14 @@ function LyricsStatus({
     let cancelled = false;
     setKind("loading");
     api
-      .getLyrics(trackId)
+      .getLyrics(song.id, lyricsMeta(song))
       .then((lyrics) => {
         if (cancelled) return;
         const source: LyricsSource = lyrics.source;
         if (source === "local") setKind("local");
-        else if (lyrics.synced?.length) setKind("synced");
+        else if (source === "lrclib") {
+          setKind(lyrics.synced?.length ? "lrclib" : "lrclibPlain");
+        } else if (lyrics.synced?.length) setKind("synced");
         else if (lyrics.plain) setKind("plain");
         else setKind("none");
       })
@@ -92,7 +110,7 @@ function LyricsStatus({
     return () => {
       cancelled = true;
     };
-  }, [trackId, isLocal, version]);
+  }, [song, isLocal, version]);
 
   return (
     <span className={`${styles.status} ${statusClass(kind)}`}>
@@ -178,7 +196,7 @@ function SearchRow({
         <span className={styles.rowSub}>{sub || "Unknown artist"}</span>
       </button>
       <LyricsStatus
-        trackId={song.id}
+        song={song}
         isLocal={isLocal}
         version={version}
       />

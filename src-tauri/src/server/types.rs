@@ -236,6 +236,7 @@ pub enum LyricsSource {
     #[default]
     None,
     Local,
+    Lrclib,
     Server,
 }
 

@@ -5,6 +5,7 @@ pub mod discord;
 pub mod error;
 pub mod events;
 pub mod lyrics;
+pub mod lrclib;
 pub mod mpris;
 pub mod playback;
 pub mod player;
@@ -36,6 +37,7 @@ pub struct AppState {
     pub session: SessionHandle,
     pub session_store: Arc<SessionStore>,
     pub lyrics: Arc<lyrics::LyricsStore>,
+    pub lrclib: lrclib::Lrclib,
     pub artist_images: ArtistImageStore,
     pub http: reqwest::Client,
 }
@@ -81,6 +83,7 @@ pub fn run() {
             let session_store = Arc::new(SessionStore::load(config_dir.clone()));
             let config = Arc::new(ConfigStore::load(config_dir.clone()));
             let lyrics = Arc::new(lyrics::LyricsStore::load(app.path().app_data_dir()?));
+            let lrclib = lrclib::Lrclib::new(http.clone());
             let artist_images = ArtistImageStore::new(
                 app.path().app_cache_dir()?.join("artist-images"),
                 http.clone(),
@@ -131,6 +134,7 @@ pub fn run() {
                 session,
                 session_store,
                 lyrics,
+                lrclib,
                 artist_images,
                 http,
             });

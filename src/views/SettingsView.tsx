@@ -18,6 +18,7 @@ import { Loading } from "../components/ui/States";
 import { Switch } from "../components/ui/Switch";
 import { formatBytes } from "../lib/format";
 import { api } from "../lib/ipc";
+import { notifyLyricsChanged } from "../lib/lyrics";
 import type {
   ArtistImageCacheInfo,
   ArtistImageMode,
@@ -156,9 +157,13 @@ export function SettingsView() {
     setSaving(true);
     setSaveError(null);
     setSaveMessage(null);
+    const providerChanged = Boolean(
+      form && settings && form.lrclibLyrics !== settings.lrclibLyrics,
+    );
     try {
       const saved = await saveSettings(normalized());
       setForm({ ...saved });
+      if (providerChanged) notifyLyricsChanged();
       setSaveMessage("Saved");
       window.setTimeout(() => setSaveMessage(null), 2500);
     } catch (err) {
@@ -525,6 +530,21 @@ export function SettingsView() {
               checked={form.resumePlayback}
               onChange={(value) => update({ resumePlayback: value })}
               label="Resume playback on launch"
+            />
+          </div>
+
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>LRCLIB lyrics</div>
+              <div className={styles.rowHint}>
+                Look up synced lyrics on lrclib.net before asking the server.
+                Lyrics you save locally always take priority.
+              </div>
+            </div>
+            <Switch
+              checked={form.lrclibLyrics}
+              onChange={(value) => update({ lrclibLyrics: value })}
+              label="Use LRCLIB for lyrics"
             />
           </div>
         </div>

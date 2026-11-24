@@ -23,8 +23,8 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - ReplayGain: Off / Track / Album, applied with GStreamer `rgvolume`, optional pre-amp.
 - Real waveform seek bar in the player bar and the fullscreen view, generated from the audio you play (a zero-bandwidth playthrough probe) plus a background analyser, persisted across restarts, and filled in progressively while the rest is analysed; hovering highlights the waveform bars up to the skip target and shows the target time, and the bar is hidden while the fullscreen view is open so only one timeline is visible.
 - Fullscreen Now Playing view with a calm dim backdrop, a toggleable sidebar (queue, lyrics, technical info), and an inline volume control.
-- Synced or plain lyrics from the server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
-- Local lyrics layer and editor: tap-sync lines to playback, nudge/distribute timings, import and export `.lrc` files, and manage every edited track from a dedicated Lyrics view. Local lyrics override server lyrics in hush.
+- Synced or plain lyrics from LRCLIB (default) or the music server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
+- Local lyrics layer and editor: tap-sync lines to playback, nudge/distribute timings, import and export `.lrc` files, and manage every edited track from a dedicated Lyrics view. Local lyrics always take priority.
 - Now Playing track information (format, bit depth, sample rate, bitrate, channels, ReplayGain gain, server) plus an explicit-content badge.
 - Artist pictures in artist cards and the artist page: server-provided images first, then an automatic, locally cached Deezer lookup with an iTunes fallback (can be limited to server-only or turned off in Settings).
 - Favorites for songs (heart in track lists) and albums (hero + card).
@@ -57,10 +57,11 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 │  ├─ config.rs        settings persistence (atomic JSON write)                │
 │  ├─ artist_images.rs artist artwork providers + disk cache (hushimg://)      │
 │  ├─ lyrics.rs        local LRC storage, parser and serializer               │
+│  ├─ lrclib.rs        LRCLIB lyrics provider + session cache                  │
 │  ├─ session_state.rs resumable queue/position snapshot (atomic JSON)         │
 │  ├─ server/          MusicServer trait + SubsonicClient (reqwest + rustls)   │
-│  ├─ player/engine.rs playbin (audio-filter: rgvolume → fade → volume →      │
-│  │                   level; gapless preload, fades, level meter)             │
+│  ├─ player/engine.rs playbin (audio-filter: tee → rg → fade → volume;        │
+│  │                   waveform probe tap; gapless preload, fades, levels)     │
 │  ├─ discord.rs       discord-rich-presence IPC (dedicated thread)            │
 │  ├─ mpris/           MPRIS on Linux, SMTC on Windows, no-op stub elsewhere   │
 │  ├─ session/         Listen Together: WebSocket client + clock sync          │
@@ -142,6 +143,7 @@ hush-tauri/
         ├── main.rs · lib.rs · commands.rs · config.rs · error.rs · events.rs · playback.rs
         ├── artist_images.rs  (artist artwork providers, disk cache, hushimg:// handler)
         ├── lyrics.rs  (local .lrc parser, storage and export helpers)
+        ├── lrclib.rs  (LRCLIB lyrics provider with a session cache)
         ├── session_state.rs  (resumable queue/position snapshot)
         ├── server/  mod.rs (trait) · subsonic.rs · types.rs
         ├── player/  mod.rs · engine.rs · waveform.rs
@@ -378,6 +380,7 @@ Everything is editable in **Settings**. A representative `settings.json`:
   "volume": 0.8,
   "muted": false,
   "resumePlayback": false,
+  "lrclibLyrics": true,
   "transitionMode": "gapless",
   "fadeSeconds": 3,
   "discordEnabled": true,
@@ -492,19 +495,20 @@ Set the relay URL in **Settings → Listen together** (`ws://host:8787`). For re
 
 ---
 
-## Lyrics editor and .lrc files
+## Lyrics
 
-Navidrome/Subsonic can serve lyrics but has no endpoint for writing them, so hush keeps its own editable lyrics layer on top of the server:
+hush can pull lyrics from multiple providers and keeps its own editable layer on top:
 
+- **Provider order** — local lyrics always win. Without a local file, hush asks **LRCLIB** (lrclib.net) first and falls back to the music server's OpenSubsonic lyrics. LRCLIB can be disabled in **Settings → Playback**, in which case the server is used directly. Provider lookups are cached for the session (including misses) and never written to the local layer.
 - **Local storage** — edited lyrics live in `<app data>/lyrics/<track-id>.lrc` (on Linux `~/.local/share/app.hush.desktop/lyrics/`; track IDs are hex-encoded in the filename so they are always filesystem-safe). Writes are atomic.
-- **Precedence** — a local file always overrides server lyrics inside hush, and the lyrics panel shows a small **Local** badge. Server lyrics remain visible and editable: saving creates a local copy without touching the server.
+- **Precedence** — a local file always overrides LRCLIB and server lyrics inside hush, and the lyrics panel shows a small **Local** badge. Provider lyrics remain visible and editable: saving creates a local copy without touching any provider.
 - **Editor route** — open **Lyrics** in the sidebar, or use the pencil in the lyrics panel / the song context menu. The editor (`#/lyrics/:trackId`) includes:
   - a real waveform timeline and transport for the track;
   - **Tap** sync (button or `T`) that stamps the selected — or next untimed — line with the *exact* pipeline position, then advances;
   - per-line timestamp editing, ±100 ms nudges, shift-all, even distribution, sort-by-time and undo;
   - import of `.lrc`/`.txt` files and export back to `.lrc`;
   - validation hints for untimed, duplicate and out-of-order lines.
-- **Management view** — `#/lyrics` lists local lyrics and searches the library, showing a lazily loaded status for each result: *Local*, *Synced (server)*, *Plain (server)* or *None*.
+- **Management view** — `#/lyrics` lists local lyrics and searches the library, showing a lazily loaded status for each result: *Local*, *Synced (LRCLIB)*, *Plain (LRCLIB)*, *Synced (server)*, *Plain (server)* or *None*.
 - **Navidrome bridge** — export the `.lrc` next to the audio file on the server's music mount and trigger a Navidrome rescan. Navidrome then serves those lyrics natively, including to other clients. hush does not upload files itself.
 
 The lyrics editor needs the track's audio to be playable, so it relies on the configured Navidrome/Subsonic server for playback while the lyric text itself stays local.
@@ -674,7 +678,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] ReplayGain Off/Track/Album applies gain; pre-amp changes loudness.
 - [ ] Album playback is gapless; fade mode ramps at boundaries; changing the mode applies immediately.
 - [ ] Fullscreen: toggle sidebar; switch queue/lyrics/info tabs; the volume slider and mute control stay in sync with the player bar; the sidebar tab persists.
-- [ ] Synced lyrics highlight and auto-scroll; clicking a line seeks; plain lyrics render; missing lyrics show an empty state.
+- [ ] Synced lyrics highlight and auto-scroll; clicking a line seeks; plain lyrics render; missing lyrics show an empty state. LRCLIB is used before the server and a saved local file overrides both.
 - [ ] Artist images appear in the artist grid and artist page; obscure artists keep the initial-letter avatar; no request burst when opening the full artist grid; images still show offline after they were cached.
 - [ ] Discord presence appears while playing, hides on pause/stop; templates update; album art and the progress timeline show.
 - [ ] Tray play/pause/next/previous/show/quit.

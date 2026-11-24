@@ -133,6 +133,9 @@ struct Engine {
 
     pipeline: Option<gst::Pipeline>,
     volume_el: Option<gst::Element>,
+    /// Real audio sink, when it exposes its own stream volume (pulsesink).
+    /// Applying volume there makes changes audible immediately.
+    sink_volume_el: Option<gst::Element>,
     fade_el: Option<gst::Element>,
     rg_el: Option<gst::Element>,
     uri: Option<String>,
@@ -202,6 +205,7 @@ pub fn run(
         waveforms,
         pipeline: None,
         volume_el: None,
+        sink_volume_el: None,
         fade_el: None,
         rg_el: None,
         uri: None,
@@ -638,6 +642,7 @@ impl Engine {
         };
         let _ = pipeline.set_state(gst::State::Paused);
         let _ = pipeline.state(gst::ClockTime::from_seconds(5));
+        self.resolve_sink_volume();
 
         if position > 0.5 && position.is_finite() {
             let _ = pipeline.seek_simple(
@@ -764,10 +769,41 @@ impl Engine {
         }
     }
 
+    /// Find the real audio sink once per pipeline. PulseAudio/PipeWire apply a
+    /// stream's own volume at mix time, so using it makes slider changes
+    /// audible immediately instead of after the buffered audio drains.
+    fn resolve_sink_volume(&mut self) {
+        if self.sink_volume_el.is_some() {
+            return;
+        }
+        let Some(pipeline) = self.pipeline.clone() else {
+            return;
+        };
+        let Some(sink) = find_output_sink(&pipeline) else {
+            return;
+        };
+        // The sink now owns the user volume; keep the chain element at unity
+        // so the two do not multiply.
+        if let Some(element) = self.volume_el.clone() {
+            element.set_property("volume", 1.0);
+        }
+        sink.set_property("volume", self.user_volume);
+        if sink.has_property("mute") {
+            sink.set_property("mute", self.muted);
+        }
+        self.sink_volume_el = Some(sink);
+    }
+
     fn set_volume(&mut self, volume: f64) {
         let volume = volume.clamp(0.0, 1.0);
         self.user_volume = volume;
-        if let Some(element) = self.volume_el.clone() {
+        self.resolve_sink_volume();
+        if let Some(sink) = self.sink_volume_el.clone() {
+            sink.set_property("volume", volume);
+            if let Some(element) = self.volume_el.clone() {
+                element.set_property("volume", 1.0);
+            }
+        } else if let Some(element) = self.volume_el.clone() {
             element.set_property("volume", volume);
         }
         self.mutate(|snapshot| snapshot.volume = volume);
@@ -777,6 +813,12 @@ impl Engine {
 
     fn set_mute(&mut self, muted: bool) {
         self.muted = muted;
+        self.resolve_sink_volume();
+        if let Some(sink) = self.sink_volume_el.clone() {
+            if sink.has_property("mute") {
+                sink.set_property("mute", muted);
+            }
+        }
         if let Some(element) = self.volume_el.clone() {
             element.set_property("mute", muted);
         }
@@ -1365,11 +1407,34 @@ impl Engine {
             let _ = pipeline.set_state(gst::State::Null);
         }
         self.volume_el = None;
+        self.sink_volume_el = None;
         self.fade_el = None;
         self.rg_el = None;
         self.last_gain = None;
         self.last_levels = None;
         self.settle_until = None;
+    }
+}
+
+/// Locate the audio sink that exposes its own stream volume. On Linux this is
+/// usually `pulsesink` (also when running on PipeWire); Windows sinks have no
+/// such property, in which case the in-chain volume element stays in charge.
+fn find_output_sink(pipeline: &gst::Pipeline) -> Option<gst::Element> {
+    let mut iter = pipeline.iterate_recurse();
+    loop {
+        match iter.next() {
+            Ok(Some(element)) => {
+                let klass = element.metadata("klass").unwrap_or_default();
+                if klass.contains("Sink")
+                    && klass.contains("Audio")
+                    && element.has_property("volume")
+                {
+                    return Some(element);
+                }
+            }
+            Ok(None) => return None,
+            Err(_) => iter.resync(),
+        }
     }
 }
 
@@ -1394,4 +1459,60 @@ fn db_to_amplitude(db: f64, power: bool) -> f64 {
     }
     let divisor = if power { 10.0 } else { 20.0 };
     10_f64.powf(db / divisor).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    /// Minimal 8 kHz mono 16-bit PCM WAV so the test does not need an encoder.
+    fn write_silence_wav(path: &std::path::Path, seconds: u32) {
+        let rate = 8000u32;
+        let data_len = rate * seconds * 2;
+        let mut file = std::fs::File::create(path).expect("create wav");
+        file.write_all(b"RIFF").unwrap();
+        file.write_all(&(36 + data_len).to_le_bytes()).unwrap();
+        file.write_all(b"WAVEfmt ").unwrap();
+        file.write_all(&16u32.to_le_bytes()).unwrap();
+        file.write_all(&1u16.to_le_bytes()).unwrap();
+        file.write_all(&1u16.to_le_bytes()).unwrap();
+        file.write_all(&rate.to_le_bytes()).unwrap();
+        file.write_all(&(rate * 2).to_le_bytes()).unwrap();
+        file.write_all(&2u16.to_le_bytes()).unwrap();
+        file.write_all(&16u16.to_le_bytes()).unwrap();
+        file.write_all(b"data").unwrap();
+        file.write_all(&data_len.to_le_bytes()).unwrap();
+        file.write_all(&vec![0u8; data_len as usize]).unwrap();
+    }
+
+    /// Needs a working audio device. Run with `cargo test engine::tests -- --ignored`.
+    #[test]
+    #[ignore]
+    fn finds_sink_stream_volume() {
+        let _ = gst::init();
+        let path = std::env::temp_dir().join("hush-sink-volume-test.wav");
+        write_silence_wav(&path, 1);
+
+        let pipeline = gst::Pipeline::new();
+        let playbin = gst::ElementFactory::make("playbin")
+            .property("uri", format!("file://{}", path.display()))
+            .build()
+            .expect("playbin");
+        pipeline.add(&playbin).unwrap();
+        let _ = pipeline.set_state(gst::State::Paused);
+        let _ = pipeline.state(gst::ClockTime::from_seconds(5));
+
+        let sink = find_output_sink(&pipeline);
+        let _ = pipeline.set_state(gst::State::Null);
+        let _ = std::fs::remove_file(&path);
+
+        let sink = sink.expect("audio sink with a stream volume");
+        assert!(sink.has_property("volume"));
+        assert!(sink.has_property("mute"));
+        assert!(sink.metadata("klass").unwrap_or_default().contains("Audio"));
+        sink.set_property("volume", 0.42);
+        assert!((sink.property::<f64>("volume") - 0.42).abs() < 0.05);
+        sink.set_property("mute", true);
+    }
 }

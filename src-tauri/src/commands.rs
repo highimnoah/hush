@@ -152,8 +152,12 @@ pub async fn get_random_songs(
 }
 
 #[tauri::command]
-pub async fn get_lyrics(state: State<'_, AppState>, id: String) -> Result<Lyrics> {
-    // hush's editable local layer always wins over server lyrics.
+pub async fn get_lyrics(
+    state: State<'_, AppState>,
+    id: String,
+    meta: Option<crate::lrclib::LyricsMeta>,
+) -> Result<Lyrics> {
+    // hush's editable local layer always wins over provider lyrics.
     if let Some(local) = state.lyrics.get(&id) {
         let has_synced = local
             .synced
@@ -171,6 +175,15 @@ pub async fn get_lyrics(state: State<'_, AppState>, id: String) -> Result<Lyrics
             &parsed,
             crate::server::types::LyricsSource::Local,
         ));
+    }
+
+    // LRCLIB is the default provider; the music server is the fallback.
+    if state.config.get().lrclib_lyrics {
+        if let Some(meta) = meta.as_ref() {
+            if let Some(lyrics) = state.lrclib.lyrics(&id, meta).await {
+                return Ok(lyrics);
+            }
+        }
     }
 
     let mut lyrics = build_server(&state)?.lyrics(&id).await?;

@@ -114,7 +114,14 @@ export interface LyricLine {
   text: string;
 }
 
-export type LyricsSource = "none" | "local" | "server";
+export type LyricsSource = "none" | "local" | "lrclib" | "server";
+
+export interface LyricsMeta {
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  duration?: number | null;
+}
 
 export interface Lyrics {
   plain: string | null;
@@ -182,6 +189,7 @@ export interface Settings {
   volume: number;
   muted: boolean;
   resumePlayback: boolean;
+  lrclibLyrics: boolean;
   transitionMode: TransitionMode;
   fadeSeconds: number;
   discordEnabled: boolean;

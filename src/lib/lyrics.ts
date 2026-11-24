@@ -1,4 +1,19 @@
-import type { LrcLine, Lyrics } from "./types";
+import type { LrcLine, Lyrics, LyricsMeta } from "./types";
+
+/** Build the provider lookup metadata from a song or the current track. */
+export function lyricsMeta(song: {
+  title?: string;
+  artist?: string;
+  album?: string;
+  duration?: number;
+}): LyricsMeta {
+  return {
+    title: song.title ?? null,
+    artist: song.artist ?? null,
+    album: song.album ?? null,
+    duration: song.duration ?? null,
+  };
+}
 
 /** Fired whenever locally saved lyrics change so open panels can refresh. */
 export const LYRICS_CHANGED_EVENT = "hush:lyrics-changed";

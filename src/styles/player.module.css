@@ -596,6 +596,11 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.lyricsProviderBadge {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
 .lyricsEdit {
   display: inline-flex;
   align-items: center;

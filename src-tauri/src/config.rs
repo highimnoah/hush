@@ -65,6 +65,8 @@ pub struct Settings {
     pub muted: bool,
     /// Restore the saved queue and start playing automatically on launch.
     pub resume_playback: bool,
+    /// Prefer LRCLIB for lyrics, falling back to the music server.
+    pub lrclib_lyrics: bool,
     /// Track boundary behaviour: hard gapless switch or a short fade.
     pub transition_mode: TransitionMode,
     /// Fade length in seconds (1–8) for `transition_mode = "fade"`.
@@ -117,6 +119,7 @@ impl Default for Settings {
             volume: 0.8,
             muted: false,
             resume_playback: false,
+            lrclib_lyrics: true,
             transition_mode: TransitionMode::Gapless,
             fade_seconds: 3,
 

@@ -17,6 +17,7 @@ import type {
   LrcLine,
   LrcMeta,
   Lyrics,
+  LyricsMeta,
   PersistedPlayerState,
   PlaybackStatus,
   PlayerSnapshot,
@@ -71,7 +72,8 @@ export const api = {
     invoke<ArtistImageCacheInfo>("artist_image_cache_info"),
   clearArtistImageCache: () =>
     invoke<ArtistImageCacheInfo>("clear_artist_image_cache"),
-  getLyrics: (id: string) => invoke<Lyrics>("get_lyrics", { id }),
+  getLyrics: (id: string, meta?: LyricsMeta) =>
+    invoke<Lyrics>("get_lyrics", { id, meta: meta ?? null }),
   getLocalLyrics: (trackId: string) =>
     invoke<LocalLyrics | null>("get_local_lyrics", { trackId }),
   listLocalLyrics: () =>

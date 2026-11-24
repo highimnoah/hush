@@ -6,6 +6,7 @@ import { api } from "../../lib/ipc";
 import {
   cachedLyrics,
   LYRICS_CHANGED_EVENT,
+  lyricsMeta,
   rememberLyrics,
 } from "../../lib/lyrics";
 import type { LyricLine, Lyrics } from "../../lib/types";
@@ -37,9 +38,15 @@ interface LyricsPanelProps {
 export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
   const position = usePlayer((state) => state.position);
   const duration = usePlayer((state) => state.duration);
+  const track = usePlayer((state) => state.track);
   const seek = usePlayer((state) => state.seek);
   const setNowPlayingOpen = usePlayer((state) => state.setNowPlayingOpen);
   const navigate = useNavigate();
+
+  const meta = useMemo(
+    () => (track && track.id === trackId ? lyricsMeta(track) : undefined),
+    [track, trackId],
+  );
 
   const [reloadKey, setReloadKey] = useState(0);
   const [lyrics, setLyrics] = useState<Lyrics | null>(
@@ -76,7 +83,7 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
     setError(null);
 
     api
-      .getLyrics(trackId)
+      .getLyrics(trackId, meta)
       .then((value) => {
         rememberLyrics(trackId, value);
         if (!cancelled) setLyrics(value);
@@ -91,7 +98,7 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [trackId, reloadKey]);
+  }, [trackId, reloadKey, meta]);
 
   const lines = useMemo(
     () => normalizeLines(lyrics, duration),
@@ -162,6 +169,12 @@ export function LyricsPanel({ trackId, className = "" }: LyricsPanelProps) {
       <div className={styles.lyricsToolbar}>
         {lyrics?.source === "local" ? (
           <span className={styles.lyricsLocalBadge}>Local</span>
+        ) : lyrics?.source === "lrclib" ? (
+          <span
+            className={`${styles.lyricsLocalBadge} ${styles.lyricsProviderBadge}`}
+          >
+            LRCLIB
+          </span>
         ) : null}
         <button
           type="button"

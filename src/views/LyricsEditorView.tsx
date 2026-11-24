@@ -25,6 +25,7 @@ import {
   countUntimed,
   formatLrcTime,
   isOutOfOrder,
+  lyricsMeta,
   lyricsToLrcLines,
   notifyLyricsChanged,
   orderLrcLines,
@@ -199,7 +200,10 @@ export function LyricsEditorView() {
       } else {
         let serverLyrics = null;
         try {
-          serverLyrics = await api.getLyrics(trackId);
+          serverLyrics = await api.getLyrics(
+            trackId,
+            songResult ? lyricsMeta(songResult) : undefined,
+          );
         } catch {
           serverLyrics = null;
         }
@@ -216,7 +220,7 @@ export function LyricsEditorView() {
             ? Math.round(songResult.duration * 1000)
             : null,
         });
-        setSource(hasContent ? "server" : "none");
+        setSource(hasContent ? serverLyrics?.source ?? "server" : "none");
         if (!songResult && !hasContent) {
           setError("Could not load this track. The server may be unreachable.");
         }
@@ -571,7 +575,13 @@ export function LyricsEditorView() {
   };
 
   const sourceLabel =
-    source === "local" ? "Local" : source === "server" ? "Server" : "New";
+    source === "local"
+      ? "Local"
+      : source === "lrclib"
+        ? "LRCLIB"
+        : source === "server"
+          ? "Server"
+          : "New";
   const subtitle = [song?.artist, song?.album].filter(Boolean).join(" · ");
 
   if (loading) {
@@ -602,7 +612,7 @@ export function LyricsEditorView() {
             className={`${styles.status} ${
               source === "local"
                 ? styles.statusLocal
-                : source === "server"
+                : source === "lrclib" || source === "server"
                   ? styles.statusSynced
                   : styles.statusNone
             }`}
@@ -773,12 +783,13 @@ export function LyricsEditorView() {
         </div>
       ) : null}
 
-      {source === "server" ? (
+      {source === "lrclib" || source === "server" ? (
         <div className={styles.banner}>
           <Info size={15} />
           <span>
-            These lyrics come from the server. Saving stores a local copy that
-            overrides the server version inside hush.
+            {source === "lrclib"
+              ? "These lyrics come from LRCLIB. Saving stores a local copy that overrides the provider inside hush."
+              : "These lyrics come from the server. Saving stores a local copy that overrides the server version inside hush."}
           </span>
         </div>
       ) : null}
