@@ -2,15 +2,17 @@ import { Heart, Play, Shuffle } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { AlbumCard } from "../components/library/AlbumCard";
 import { AsyncContent } from "../components/ui/AsyncContent";
 import { Artwork } from "../components/ui/Artwork";
+import { BackButton } from "../components/ui/BackButton";
 import { ExplicitBadge } from "../components/ui/ExplicitBadge";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { TrackList } from "../components/library/TrackList";
 import { formatDuration, isExplicit } from "../lib/format";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
-import type { AlbumDetail, Song } from "../lib/types";
+import type { Album, AlbumDetail, Song } from "../lib/types";
 import { useAsync } from "../lib/useAsync";
 import { useLibrary } from "../store/library";
 import { usePlayer } from "../store/player";
@@ -43,6 +45,39 @@ function AlbumBody({ detail }: { detail: AlbumDetail }) {
   const explicit =
     isExplicit({ explicitStatus: album.explicitStatus }) ||
     songs.some((song) => isExplicit(song));
+
+  const artistId = album.artistId;
+  const genre =
+    album.genre?.trim() ||
+    songs.find((song) => song.genre?.trim())?.genre?.trim() ||
+    "";
+
+  const artistAlbums = useAsync<Album[]>(
+    () =>
+      artistId
+        ? api
+            .getArtist(artistId)
+            .then((detail) =>
+              detail.albums
+                .filter((item) => item.id !== album.id)
+                .slice(0, 8),
+            )
+        : Promise.resolve([]),
+    [artistId, album.id],
+  );
+  const genreAlbums = useAsync<Album[]>(
+    () =>
+      genre
+        ? api.getAlbumsByGenre(genre, 12).catch(() => [] as Album[])
+        : Promise.resolve([]),
+    [genre],
+  );
+
+  const artistShelf = artistAlbums.data ?? [];
+  const shownArtistIds = new Set(artistShelf.map((item) => item.id));
+  const genreShelf = (genreAlbums.data ?? [])
+    .filter((item) => item.id !== album.id && !shownArtistIds.has(item.id))
+    .slice(0, 8);
 
   return (
     <>
@@ -134,6 +169,45 @@ function AlbumBody({ detail }: { detail: AlbumDetail }) {
       ) : (
         <TrackList songs={songs} showAlbum={false} showArtwork={false} />
       )}
+
+      {artistShelf.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>
+              More by {album.artist ?? "this artist"}
+            </h2>
+            {artistId ? (
+              <Link to={`/artists/${artistId}`} className={styles.sectionLink}>
+                See all
+              </Link>
+            ) : null}
+          </div>
+          <div className={`${styles.grid} ${styles.gridWide}`}>
+            {artistShelf.map((item) => (
+              <AlbumCard key={item.id} album={item} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {genreShelf.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>More {genre} albums</h2>
+            <Link
+              to={`/genres/${encodeURIComponent(genre)}`}
+              className={styles.sectionLink}
+            >
+              See all
+            </Link>
+          </div>
+          <div className={`${styles.grid} ${styles.gridWide}`}>
+            {genreShelf.map((item) => (
+              <AlbumCard key={item.id} album={item} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -154,6 +228,7 @@ export function AlbumView() {
 
   return (
     <div className={styles.page}>
+      <BackButton to="/albums" label="Albums" />
       <AsyncContent state={state} loadingLabel="Loading album…">
         {(detail) => (detail ? <AlbumBody detail={detail} /> : null)}
       </AsyncContent>
