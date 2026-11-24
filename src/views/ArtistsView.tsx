@@ -1,8 +1,11 @@
+import { useMemo, useState } from "react";
+
 import { ArtistCard } from "../components/library/ArtistCard";
 import { AsyncContent } from "../components/ui/AsyncContent";
 import { EmptyState } from "../components/ui/EmptyState";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { CardSkeletonGrid } from "../components/ui/States";
+import { ViewSearchBar } from "../components/ui/ViewSearchBar";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import type { Artist } from "../lib/types";
@@ -11,11 +14,21 @@ import styles from "../styles/library.module.css";
 
 export function ArtistsView() {
   const configured = useConfigured();
+  const [query, setQuery] = useState("");
 
   const state = useAsync<Artist[]>(
     () => (configured ? api.getArtists() : Promise.resolve([])),
     [configured],
   );
+
+  const term = query.trim().toLowerCase();
+  const artists = state.data ?? [];
+  const filtered = useMemo(() => {
+    if (!term) return artists;
+    return artists.filter((artist) =>
+      artist.name.toLowerCase().includes(term),
+    );
+  }, [artists, term]);
 
   if (!configured) return <NotConfigured />;
 
@@ -25,19 +38,37 @@ export function ArtistsView() {
         <div>
           <h1 className={styles.pageTitle}>Artists</h1>
           <div className={styles.pageSubtitle}>
-            {state.data ? `${state.data.length} artists` : "Your library"}
+            {state.data
+              ? term
+                ? `${filtered.length} of ${artists.length} artists`
+                : `${artists.length} artists`
+              : "Your library"}
           </div>
         </div>
       </div>
 
+      <ViewSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Filter artists"
+        ariaLabel="Filter artists"
+      />
+
       <AsyncContent state={state} skeleton={<CardSkeletonGrid count={12} />}>
-        {(artists) =>
-          artists.length ? (
-            <div className={`${styles.grid} ${styles.artistGrid}`}>
-              {artists.map((artist) => (
-                <ArtistCard key={artist.id} artist={artist} />
-              ))}
-            </div>
+        {(loaded) =>
+          loaded.length ? (
+            filtered.length ? (
+              <div className={`${styles.grid} ${styles.artistGrid}`}>
+                {filtered.map((artist) => (
+                  <ArtistCard key={artist.id} artist={artist} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="No artists match"
+                text={`Nothing found for “${query.trim()}”.`}
+              />
+            )
           ) : (
             <EmptyState
               title="No artists"

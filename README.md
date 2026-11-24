@@ -8,8 +8,9 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 
 ## Features
 
-- Browse your library: Home, Search, Artists, Albums, Genres, Playlists, Liked.
+- Browse your library: Home, Artists, Albums, Songs, Genres, Playlists, Liked; each list has its own search/filter bar (Artists and Playlists filter locally, Albums and Songs search the server).
 - Full transport: play, pause, stop/clear, next, previous, seek, volume, mute.
+- Scroll-wheel volume control (5% per step) with a transient percentage readout in the player bar and the fullscreen view.
 - Queue management: play next, add to queue, remove, drag-to-reorder, clear, save as playlist.
 - Shuffle and repeat (off / all / one).
 - Native GStreamer playback: FLAC, MP3, AAC/M4A, Opus, Ogg Vorbis, WAV (ALAC with `gst-libav`).
@@ -18,7 +19,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Borderless, theme-matched window controls (minimize, maximize/restore, close) in the titlebar and the fullscreen view, with drag and double-click-to-maximize support.
 - Automatic update checks (opt-out) for the Windows installer and the Linux AppImage, with in-app download progress and restart-to-apply.
 - ReplayGain: Off / Track / Album, applied with GStreamer `rgvolume`, optional pre-amp.
-- Real waveform seek bar in the player bar and the fullscreen view (decoded in Rust and cached); the bar is hidden while the fullscreen view is open so only one timeline is visible.
+- Real waveform seek bar in the player bar and the fullscreen view (decoded in Rust and cached); hovering highlights the waveform bars up to the skip target and shows the target time, and the bar is hidden while the fullscreen view is open so only one timeline is visible.
 - Fullscreen Now Playing view with a calm dim backdrop, a toggleable sidebar (queue, lyrics, technical info), and an inline volume control.
 - Synced or plain lyrics from the server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
 - Local lyrics layer and editor: tap-sync lines to playback, nudge/distribute timings, import and export `.lrc` files, and manage every edited track from a dedicated Lyrics view. Local lyrics override server lyrics in hush.
@@ -44,7 +45,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 
 ```
 ┌──────────────────────────────  React (WebView)  ─────────────────────────────┐
-│  Views: Home · Search · Artists · Albums · Genres · Playlists · Liked · …    │
+│  Views: Home · Artists · Albums · Songs · Genres · Playlists · Liked · …     │
 │  Zustand: player (queue/transport) · settings · context menu · toast         │
 │  lib/ipc.ts — typed invoke() wrappers + event subscriptions                  │
 └──────────────▲───────────────────────────────┬───────────────────────────────┘
@@ -114,10 +115,11 @@ hush-tauri/
 │   ├── components/
 │   │   ├── TitleBar.tsx · Sidebar.tsx · PlayerBar.tsx · NowPlaying.tsx (fullscreen) · QueuePanel.tsx
 │   │   ├── library/             TrackList · AlbumCard · ArtistCard · PlaylistCard
-│   │   └── ui/                  Artwork · Slider · WaveformSeek · LyricsPanel ·
-│   │                            Dialog · ToastHost · UpdateDialog · WindowControls ·
+│   │   └── ui/                  Artwork · ArtistAvatar · Slider · VolumeControl · WaveformSeek ·
+│   │                            ViewSearchBar · LyricsPanel · Dialog · ToastHost · UpdateDialog ·
+│   │                            WindowControls ·
 │   │                            ExplicitBadge · Switch · states · context menu
-│   ├── views/                   Home · Search · Together · Artists · Albums · Genres · Playlists · Liked ·
+│   ├── views/                   Home · Together · Artists · Albums · Songs · Genres · Playlists · Liked ·
 │   │                            Lyrics · LyricsEditor · Settings
 │   ├── store/                   player.ts · library.ts · session.ts · settings.ts · updater.ts · contextMenu.ts
 │   ├── lib/                     ipc.ts · types.ts · format.ts · lyrics.ts · waveform.ts · useAsync.ts · hooks.ts
@@ -627,6 +629,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - **Resume session** is written to `player-session.json` with a short debounce; an abrupt kill can lose the last few seconds of position.
 - **Discord cover art** requires a publicly reachable HTTPS cover URL. When unavailable (or disabled) hush falls back to the static `hush` asset key.
 - **Artist images** in `Automatic` mode send artist names to Deezer and iTunes when no server image exists. Set the mode to **Server** or **Off** for fully offline operation; cached images keep working offline regardless.
+- **Songs view** browses the library through `search3` with an empty query (the OpenSubsonic full-library mechanism). Navidrome 0.63+ keeps deep-offset paging fast; older versions slow down progressively on very large libraries, and strict legacy Subsonic servers may require a search term.
 - **Credentials** are stored locally in plaintext JSON; use a token. Encrypted storage (Stronghold/keyring) is a possible future upgrade.
 - **Listen Together** requires a running `hush-sync` relay, the same Navidrome server for all participants, and host-only control (no collaborative queue yet). Sync is music-grade, not video-grade.
 - **Media controls** are MPRIS on Linux and SMTC on Windows. SMTC is bound to the main window handle: closing the main window while the mini player keeps the app alive unregisters the overlay until the main window is shown again. `souvlaki` cover art is passed only for HTTPS URLs (token-bearing query strings never go over plain HTTP).
@@ -645,8 +648,11 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Settings: enter server URL + token/salt; **Test connection** succeeds; **Save** persists across restart.
 - [ ] Open Settings with an invalid URL / wrong credentials → clear error state.
 - [ ] Home loads recently added / recently played / most played / starred, plus Continue listening when a session exists.
-- [ ] Search returns songs, albums and artists; empty query shows an empty state.
+- [ ] Artists, Albums, Songs and Playlists each have a working search/filter bar; the global Search entry is gone; clearing a query restores the normal listing (and the album sort control).
+- [ ] Songs view loads the library, Play/Shuffle work, and "Load more" pages through it without duplicates; searching filters the list.
 - [ ] Album, artist, genre and playlist detail pages render; **Play** and **Shuffle** start playback.
+- [ ] Scrolling over a volume slider steps the volume in both the player bar and the fullscreen view; the percentage chip appears for drag/wheel/keyboard changes; the page does not scroll.
+- [ ] Hovering a waveform shows a marker line, a highlighted skip region and the target time; dragging keeps the indicator on the commit target.
 - [ ] Genres list loads with counts; a genre page plays its songs (and albums when the server supports `byGenre`).
 - [ ] Play, pause, stop, next, previous work; progress and time labels update.
 - [ ] Click/drag the seek bar; volume slider and mute work.

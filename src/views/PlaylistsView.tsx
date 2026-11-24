@@ -1,5 +1,5 @@
 import { ListMusic, Plus } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { PlaylistCard } from "../components/library/PlaylistCard";
@@ -8,6 +8,7 @@ import { PromptDialog } from "../components/ui/Dialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { NotConfigured } from "../components/ui/NotConfigured";
 import { CardSkeletonGrid } from "../components/ui/States";
+import { ViewSearchBar } from "../components/ui/ViewSearchBar";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import type { Playlist } from "../lib/types";
@@ -29,6 +30,16 @@ export function PlaylistsView() {
 
   const [promptOpen, setPromptOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const term = query.trim().toLowerCase();
+  const playlists = state.data ?? [];
+  const filtered = useMemo(() => {
+    if (!term) return playlists;
+    return playlists.filter((playlist) =>
+      playlist.name.toLowerCase().includes(term),
+    );
+  }, [playlists, term]);
 
   const handleCreate = async (name: string) => {
     setBusy(true);
@@ -57,7 +68,9 @@ export function PlaylistsView() {
           <h1 className={styles.pageTitle}>Playlists</h1>
           <div className={styles.pageSubtitle}>
             {state.data
-              ? `${state.data.length} ${state.data.length === 1 ? "playlist" : "playlists"}`
+              ? term
+                ? `${filtered.length} of ${playlists.length} playlists`
+                : `${playlists.length} ${playlists.length === 1 ? "playlist" : "playlists"}`
               : "Your playlists"}
           </div>
         </div>
@@ -73,14 +86,29 @@ export function PlaylistsView() {
         </div>
       </div>
 
+      <ViewSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Filter playlists"
+        ariaLabel="Filter playlists"
+      />
+
       <AsyncContent state={state} skeleton={<CardSkeletonGrid count={8} />}>
-        {(playlists) =>
-          playlists.length ? (
-            <div className={`${styles.grid} ${styles.gridWide}`}>
-              {playlists.map((playlist) => (
-                <PlaylistCard key={playlist.id} playlist={playlist} />
-              ))}
-            </div>
+        {(loaded) =>
+          loaded.length ? (
+            filtered.length ? (
+              <div className={`${styles.grid} ${styles.gridWide}`}>
+                {filtered.map((playlist) => (
+                  <PlaylistCard key={playlist.id} playlist={playlist} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={<ListMusic size={22} />}
+                title="No playlists match"
+                text={`Nothing found for “${query.trim()}”.`}
+              />
+            )
           ) : (
             <EmptyState
               icon={<ListMusic size={22} />}
