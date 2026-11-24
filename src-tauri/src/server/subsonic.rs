@@ -452,6 +452,38 @@ impl MusicServer for SubsonicClient {
         })
     }
 
+    async fn songs_page(&self, query: &str, size: u32, offset: u32) -> Result<Vec<Song>> {
+        let response = self
+            .call::<SearchPayload>(
+                "search3",
+                &[
+                    ("query", query.to_string()),
+                    ("artistCount", "0".to_string()),
+                    ("albumCount", "0".to_string()),
+                    ("songCount", size.to_string()),
+                    ("songOffset", offset.to_string()),
+                ],
+            )
+            .await?;
+        Ok(response.payload.search_result3.song)
+    }
+
+    async fn albums_page(&self, query: &str, size: u32, offset: u32) -> Result<Vec<Album>> {
+        let response = self
+            .call::<SearchPayload>(
+                "search3",
+                &[
+                    ("query", query.to_string()),
+                    ("artistCount", "0".to_string()),
+                    ("albumCount", size.to_string()),
+                    ("albumOffset", offset.to_string()),
+                    ("songCount", "0".to_string()),
+                ],
+            )
+            .await?;
+        Ok(response.payload.search_result3.album)
+    }
+
     async fn starred(&self) -> Result<SearchResults> {
         let response = self.call::<StarredPayload>("getStarred2", &[]).await?;
         let result = response.payload.starred2;

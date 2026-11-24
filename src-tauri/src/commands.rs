@@ -107,6 +107,38 @@ pub async fn search(state: State<'_, AppState>, query: String) -> Result<SearchR
 }
 
 #[tauri::command]
+pub async fn get_songs(
+    state: State<'_, AppState>,
+    query: Option<String>,
+    size: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<Song>> {
+    build_server(&state)?
+        .songs_page(
+            &query.unwrap_or_default(),
+            size.unwrap_or(200).clamp(1, 500),
+            offset.unwrap_or(0),
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn search_albums(
+    state: State<'_, AppState>,
+    query: String,
+    size: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<Album>> {
+    build_server(&state)?
+        .albums_page(
+            &query,
+            size.unwrap_or(120).clamp(1, 500),
+            offset.unwrap_or(0),
+        )
+        .await
+}
+
+#[tauri::command]
 pub async fn get_starred(state: State<'_, AppState>) -> Result<SearchResults> {
     build_server(&state)?.starred().await
 }

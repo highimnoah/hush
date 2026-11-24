@@ -168,6 +168,8 @@ pub fn run() {
             commands::import_lyrics_file,
             commands::player_position_now,
             commands::get_genres,
+            commands::get_songs,
+            commands::search_albums,
             commands::artist_image,
             commands::artist_image_cache_info,
             commands::clear_artist_image_cache,

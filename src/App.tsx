@@ -31,8 +31,8 @@ import { LyricsEditorView } from "./views/LyricsEditorView";
 import { LyricsView } from "./views/LyricsView";
 import { PlaylistView } from "./views/PlaylistView";
 import { PlaylistsView } from "./views/PlaylistsView";
-import { SearchView } from "./views/SearchView";
 import { SettingsView } from "./views/SettingsView";
+import { SongsView } from "./views/SongsView";
 import { TogetherView } from "./views/TogetherView";
 
 function parseNumber(value: string | undefined): number {
@@ -226,7 +226,7 @@ export default function App() {
         <main className={styles.main}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/search" element={<SearchView />} />
+            <Route path="/songs" element={<SongsView />} />
             <Route path="/together" element={<TogetherView />} />
             <Route path="/artists" element={<ArtistsView />} />
             <Route path="/artists/:id" element={<ArtistView />} />

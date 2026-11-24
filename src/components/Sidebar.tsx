@@ -5,8 +5,8 @@ import {
   Heart,
   Home,
   ListMusic,
+  Music,
   Music2,
-  Search,
   Settings,
   Users,
 } from "lucide-react";
@@ -25,13 +25,13 @@ interface NavEntry {
 
 const listenItems: NavEntry[] = [
   { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/search", label: "Search", icon: Search },
   { to: "/together", label: "Listen together", icon: Handshake },
 ];
 
 const libraryItems: NavEntry[] = [
   { to: "/artists", label: "Artists", icon: Users },
   { to: "/albums", label: "Albums", icon: Disc3 },
+  { to: "/songs", label: "Songs", icon: Music },
   { to: "/genres", label: "Genres", icon: Music2 },
   { to: "/playlists", label: "Playlists", icon: ListMusic },
   { to: "/liked", label: "Liked", icon: Heart },

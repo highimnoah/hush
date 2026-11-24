@@ -54,6 +54,10 @@ export const api = {
   getPlaylists: () => invoke<Playlist[]>("get_playlists"),
   getPlaylist: (id: string) => invoke<PlaylistDetail>("get_playlist", { id }),
   search: (query: string) => invoke<SearchResults>("search", { query }),
+  getSongsPage: (query = "", size = 200, offset = 0) =>
+    invoke<Song[]>("get_songs", { query, size, offset }),
+  searchAlbums: (query: string, size = 120, offset = 0) =>
+    invoke<Album[]>("search_albums", { query, size, offset }),
   getStarred: () => invoke<SearchResults>("get_starred"),
   getRandomSongs: (size = 50) =>
     invoke<Song[]>("get_random_songs", { size }),

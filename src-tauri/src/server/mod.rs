@@ -68,6 +68,11 @@ pub trait MusicServer: Send + Sync {
     async fn playlists(&self) -> Result<Vec<Playlist>>;
     async fn playlist(&self, id: &str) -> Result<PlaylistDetail>;
     async fn search(&self, query: &str) -> Result<SearchResults>;
+    /// Paged song listing via `search3`. An empty query returns the whole
+    /// library on OpenSubsonic servers (Navidrome supports this).
+    async fn songs_page(&self, query: &str, size: u32, offset: u32) -> Result<Vec<Song>>;
+    /// Paged album search via `search3`.
+    async fn albums_page(&self, query: &str, size: u32, offset: u32) -> Result<Vec<Album>>;
     async fn starred(&self) -> Result<SearchResults>;
     async fn random_songs(&self, size: u32) -> Result<Vec<Song>>;
     async fn lyrics(&self, id: &str) -> Result<Lyrics>;
