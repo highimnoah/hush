@@ -9,6 +9,8 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 ## Features
 
 - Browse your library: Home, Artists, Albums, Songs, Genres, Playlists, Liked; each list has its own search/filter bar (Artists and Playlists filter locally, Albums and Songs search the server).
+- Back buttons on album, artist, playlist, genre and lyrics-editor pages: in-app navigation returns to the previous view, while deep links fall back to the parent list.
+- Album pages end with "More by {artist}" and "More {genre} albums" shelves (current album and duplicates excluded, empty shelves hidden).
 - Full transport: play, pause, stop/clear, next, previous, seek, volume, mute.
 - Scroll-wheel volume control (5% per step) with a transient percentage readout in the player bar and the fullscreen view.
 - Queue management: play next, add to queue, remove, drag-to-reorder, clear, save as playlist.
@@ -651,6 +653,8 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Artists, Albums, Songs and Playlists each have a working search/filter bar; the global Search entry is gone; clearing a query restores the normal listing (and the album sort control).
 - [ ] Songs view loads the library, Play/Shuffle work, and "Load more" pages through it without duplicates; searching filters the list.
 - [ ] Album, artist, genre and playlist detail pages render; **Play** and **Shuffle** start playback.
+- [ ] Detail pages show a back button; it returns to the previous in-app view, or to the parent list when the page was opened directly.
+- [ ] An album page shows "More by …" and "More <genre> albums" when data exists, with no duplicates or empty headings; "See all" links open the artist/genre pages.
 - [ ] Scrolling over a volume slider steps the volume in both the player bar and the fullscreen view; the percentage chip appears for drag/wheel/keyboard changes; the page does not scroll.
 - [ ] Hovering a waveform shows a marker line, a highlighted skip region and the target time; dragging keeps the indicator on the commit target.
 - [ ] Genres list loads with counts; a genre page plays its songs (and albums when the server supports `byGenre`).
