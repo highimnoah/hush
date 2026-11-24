@@ -385,7 +385,9 @@ impl Engine {
 
         if !track.id.is_empty() {
             self.waveforms
-                .analyze(self.app.clone(), track.id.clone(), url.clone());
+                .playing_changed(Some(&track.id), duration);
+            self.waveforms
+                .analyze_current(track.id.clone(), url.clone(), duration);
         }
 
         match self.build(&url) {
@@ -402,6 +404,13 @@ impl Engine {
     }
 
     fn preload(&mut self, url: String, track: TrackInfo) {
+        // Pre-warm the next track's waveform while the current one plays, so it
+        // is ready the moment a gapless/fade transition happens.
+        if !track.id.is_empty() {
+            let duration = track.duration.map(|value| value as f64).unwrap_or(0.0);
+            self.waveforms
+                .prewarm(track.id.clone(), url.clone(), duration);
+        }
         if let Ok(mut next) = self.next.lock() {
             *next = Some((url, track));
         }
@@ -442,8 +451,18 @@ impl Engine {
             .map_err(|err| element_error("fakesink", err))?;
         playbin.set_property("video-sink", &video_sink);
 
-        // Audio chain: rgvolume? → fade → volume → level?
+        // Audio chain:
+        //   tee ─┬─ rgvolume? → fade → volume → level?
+        //        └─ audioconvert → audioresample → capsfilter(4k mono) → fakesink
+        //
+        // The second branch is the waveform playthrough probe: it costs no extra
+        // bandwidth and sees the audio exactly as it is being played.
         let chain = gst::Bin::new();
+
+        let tee = gst::ElementFactory::make("tee")
+            .build()
+            .map_err(|err| element_error("tee", err))?;
+        chain.add(&tee).map_err(|e| e.to_string())?;
 
         let fade = gst::ElementFactory::make("volume")
             .property("volume", self.fade_level)
@@ -500,16 +519,76 @@ impl Engine {
             pair[0].link(&pair[1]).map_err(|e| e.to_string())?;
         }
 
+        let Some(tee_src) = tee.request_pad_simple("src_%u") else {
+            return Err("tee has no request pad".to_string());
+        };
         let first = elements.first().ok_or("empty audio chain")?;
-        let last = elements.last().ok_or("empty audio chain")?;
-        let sink_target = first
+        let chain_sink = first
             .static_pad("sink")
             .ok_or_else(|| "audio chain has no sink pad".to_string())?;
+        tee_src
+            .link(&chain_sink)
+            .map_err(|e| e.to_string())?;
+
+        // Playthrough probe branch (silent, unthrottled).
+        let tap_convert = gst::ElementFactory::make("audioconvert")
+            .build()
+            .map_err(|err| element_error("audioconvert", err))?;
+        let tap_resample = gst::ElementFactory::make("audioresample")
+            .build()
+            .map_err(|err| element_error("audioresample", err))?;
+        let tap_caps = gst::Caps::builder("audio/x-raw")
+            .field("format", "S16LE")
+            .field("channels", 1i32)
+            .field("rate", 4000i32)
+            .build();
+        let tap_filter = gst::ElementFactory::make("capsfilter")
+            .property("caps", tap_caps)
+            .build()
+            .map_err(|err| element_error("capsfilter", err))?;
+        let tap_sink = gst::ElementFactory::make("fakesink")
+            .property("sync", false)
+            .property("async", false)
+            .build()
+            .map_err(|err| element_error("fakesink", err))?;
+        for element in [&tap_convert, &tap_resample, &tap_filter, &tap_sink] {
+            chain.add(element).map_err(|e| e.to_string())?;
+        }
+        gst::Element::link_many([&tap_convert, &tap_resample, &tap_filter, &tap_sink])
+            .map_err(|e| e.to_string())?;
+
+        let Some(tap_src) = tee.request_pad_simple("src_%u") else {
+            return Err("tee has no second request pad".to_string());
+        };
+        let tap_convert_sink = tap_convert
+            .static_pad("sink")
+            .ok_or_else(|| "audioconvert has no sink pad".to_string())?;
+        tap_src
+            .link(&tap_convert_sink)
+            .map_err(|e| e.to_string())?;
+
+        let waveforms = self.waveforms.clone();
+        if let Some(pad) = tap_filter.static_pad("src") {
+            pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+                if let Some(buffer) = info.buffer() {
+                    let pts = buffer.pts().map(|time| time.seconds_f64());
+                    if let Ok(map) = buffer.map_readable() {
+                        waveforms.feed_playback(pts, map.as_slice());
+                    }
+                }
+                gst::PadProbeReturn::Ok
+            });
+        }
+
+        let tee_sink = tee
+            .static_pad("sink")
+            .ok_or_else(|| "tee has no sink pad".to_string())?;
+        let last = elements.last().ok_or("empty audio chain")?;
         let src_target = last
             .static_pad("src")
             .ok_or_else(|| "audio chain has no src pad".to_string())?;
         let sink_ghost =
-            gst::GhostPad::with_target(&sink_target).map_err(|e| e.to_string())?;
+            gst::GhostPad::with_target(&tee_sink).map_err(|e| e.to_string())?;
         let src_ghost = gst::GhostPad::with_target(&src_target).map_err(|e| e.to_string())?;
         chain
             .add_pad(&sink_ghost)
@@ -631,6 +710,7 @@ impl Engine {
         self.fade_level = 1.0;
         self.teardown();
         self.uri = None;
+        self.waveforms.playing_changed(None, 0.0);
         self.mutate(|snapshot| {
             snapshot.status = PlaybackStatus::Stopped;
             snapshot.position = 0.0;
@@ -880,7 +960,9 @@ impl Engine {
 
         if !track.id.is_empty() {
             self.waveforms
-                .analyze(self.app.clone(), track.id.clone(), url.clone());
+                .playing_changed(Some(&track.id), duration);
+            self.waveforms
+                .analyze_current(track.id.clone(), url.clone(), duration);
         }
 
         if rebuild {
@@ -1067,6 +1149,7 @@ impl Engine {
                 let seconds = duration.seconds_f64();
                 if seconds.is_finite() && seconds > 0.0 {
                     self.mutate(|snapshot| snapshot.duration = seconds);
+                    self.waveforms.set_duration(seconds);
                     self.emit_state();
                 }
             }

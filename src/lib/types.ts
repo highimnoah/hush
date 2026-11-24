@@ -252,9 +252,15 @@ export interface GainEvent {
   mode: ReplayGainMode;
 }
 
+export interface WaveformData {
+  peaks: number[];
+  complete: boolean;
+}
+
 export interface WaveformEvent {
   trackId: string;
   peaks: number[];
+  complete: boolean;
 }
 
 export interface AdvancedEvent {

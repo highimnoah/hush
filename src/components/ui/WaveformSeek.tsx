@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 
 import { formatTime } from "../../lib/format";
-import { fallbackPeaks } from "../../lib/waveform";
 import { usePlayer } from "../../store/player";
 import { useSettings } from "../../store/settings";
 import styles from "../../styles/ui.module.css";
+
+const WAVEFORM_SLOTS = 240;
+/** Flat, low bar shown for slots that have not been analysed yet. */
+const PENDING_BAR = 0.08;
 
 interface WaveformSeekProps {
   value: number;
@@ -52,14 +55,30 @@ export function WaveformSeek({
   const trackId = forcedTrackId ?? currentTrackId;
   const waveform = forcedTrackId ? storedWaveform : liveWaveform;
   const accent = useSettings((state) => state.settings?.accent ?? "blue");
+  const ensureWaveform = usePlayer((state) => state.ensureWaveform);
 
+  const peaks = waveform?.peaks;
+  const pending = Boolean(trackId) && !peaks?.length;
   const data = useMemo(() => {
-    if (waveform && waveform.length) return waveform;
-    if (trackId) return fallbackPeaks(trackId, 160);
-    return new Array(120).fill(0.08);
-  }, [waveform, trackId]);
+    const slots = new Array<number>(WAVEFORM_SLOTS).fill(PENDING_BAR);
+    if (peaks) {
+      const count = Math.min(WAVEFORM_SLOTS, peaks.length);
+      for (let index = 0; index < count; index += 1) {
+        slots[index] = peaks[index];
+      }
+    }
+    return slots;
+  }, [peaks]);
 
   const safeMax = max > 0 ? max : 0;
+
+  // Views that show a track other than the one playing (the lyrics editor)
+  // ask for its analysis explicitly.
+  useEffect(() => {
+    if (!forcedTrackId || peaks?.length || safeMax <= 0) return;
+    ensureWaveform(forcedTrackId, safeMax);
+  }, [forcedTrackId, peaks, safeMax, ensureWaveform]);
+
   const shown = draft ?? value;
   const ratio =
     safeMax > 0 ? Math.min(1, Math.max(0, shown / safeMax)) : 0;
@@ -216,6 +235,7 @@ export function WaveformSeek({
 
   const classes = [
     styles.waveform,
+    pending ? styles.waveformPending : "",
     disabled ? styles.waveformDisabled : "",
     className,
   ]

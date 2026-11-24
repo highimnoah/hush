@@ -79,7 +79,7 @@ pub fn run() {
             let config_dir = app.path().app_config_dir()?;
             config::ensure_config_dir(&config_dir)?;
             let session_store = Arc::new(SessionStore::load(config_dir.clone()));
-            let config = Arc::new(ConfigStore::load(config_dir));
+            let config = Arc::new(ConfigStore::load(config_dir.clone()));
             let lyrics = Arc::new(lyrics::LyricsStore::load(app.path().app_data_dir()?));
             let artist_images = ArtistImageStore::new(
                 app.path().app_cache_dir()?.join("artist-images"),
@@ -93,7 +93,10 @@ pub fn run() {
             discord.configure(discord::DiscordConfig::from(&settings));
 
             let mpris = MprisHandle::spawn(handle.clone());
-            let waveforms = WaveformHandle::new();
+            let waveforms = WaveformHandle::new(
+                handle.clone(),
+                config_dir.join("waveforms.json"),
+            );
 
             let player = PlayerHandle::spawn(
                 handle.clone(),
@@ -181,6 +184,7 @@ pub fn run() {
             commands::delete_playlist,
             commands::get_cover_art_url,
             commands::get_waveform,
+            commands::ensure_waveform,
             commands::scrobble,
             commands::set_star,
             commands::player_load,

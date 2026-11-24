@@ -131,7 +131,9 @@ function useAppBootstrap() {
       gain: (event) => usePlayer.getState().setGain(event.applied),
       track: (track) => usePlayer.getState().onTrack(track),
       waveform: (event) =>
-        usePlayer.getState().setWaveform(event.trackId, event.peaks),
+        usePlayer
+          .getState()
+          .setWaveform(event.trackId, event.peaks, event.complete),
       session: (snapshot) => useSession.getState().setSnapshot(snapshot),
       command: (command) => handleUiCommand(command.action, command.value),
       advanced: (event) => usePlayer.getState().onAdvanced(event.trackId),

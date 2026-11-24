@@ -33,6 +33,7 @@ import type {
   TrackInfo,
   TransitionMode,
   UiCommand,
+  WaveformData,
   WaveformEvent,
   SessionSnapshot,
 } from "./types";
@@ -112,7 +113,10 @@ export const api = {
   deletePlaylist: (id: string) => invoke<void>("delete_playlist", { id }),
   getCoverArtUrl: (id: string, size = 600) =>
     invoke<string>("get_cover_art_url", { id, size }),
-  getWaveform: (id: string) => invoke<number[] | null>("get_waveform", { id }),
+  getWaveform: (id: string) =>
+    invoke<WaveformData | null>("get_waveform", { id }),
+  ensureWaveform: (id: string, duration: number) =>
+    invoke<WaveformData | null>("ensure_waveform", { id, duration }),
   scrobble: (id: string, submission: boolean) =>
     invoke<void>("scrobble", { id, submission }),
   setStar: (kind: StarKind, id: string, starred: boolean) =>

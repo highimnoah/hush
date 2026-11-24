@@ -487,8 +487,29 @@ pub fn get_current_track(state: State<'_, AppState>) -> Option<TrackInfo> {
 }
 
 #[tauri::command]
-pub fn get_waveform(state: State<'_, AppState>, id: String) -> Option<Vec<f32>> {
+pub fn get_waveform(
+    state: State<'_, AppState>,
+    id: String,
+) -> Option<crate::player::waveform::WaveformData> {
     state.waveforms.get(&id)
+}
+
+/// Analyse a track on demand (used by views that are not playing it, such as
+/// the lyrics editor). Progress and the final result arrive on `hush://waveform`.
+#[tauri::command]
+pub fn ensure_waveform(
+    state: State<'_, AppState>,
+    id: String,
+    duration: f64,
+) -> Option<crate::player::waveform::WaveformData> {
+    if id.is_empty() {
+        return None;
+    }
+    let url = build_server(&state).ok()?.stream_url(&id);
+    if url.is_empty() {
+        return None;
+    }
+    state.waveforms.ensure(id, url, duration.max(0.0))
 }
 
 // ---------------------------------------------------------------------------

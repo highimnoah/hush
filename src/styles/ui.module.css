@@ -408,6 +408,19 @@
   width: 100%;
   height: 100%;
 }
+/* Flat "analysing…" bars until the first real peaks arrive. */
+.waveformPending .waveformCanvas {
+  animation: waveformPulse 2.2s ease-in-out infinite;
+}
+@keyframes waveformPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 .waveformHint {
   position: absolute;
   top: -22px;

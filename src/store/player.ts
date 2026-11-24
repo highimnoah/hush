@@ -10,6 +10,7 @@ import type {
   SleepMode,
   Song,
   TrackInfo,
+  WaveformData,
 } from "../lib/types";
 import { useSettings } from "./settings";
 
@@ -30,6 +31,9 @@ let sessionRestored = false;
 
 // Gapless/fade boundary bookkeeping (not reactive).
 let lastAdvancedAt = 0;
+
+// Waveform on-demand requests already issued in this session (not reactive).
+const requestedWaveforms = new Set<string>();
 
 function toTrack(song: Song): TrackInfo {
   return {
@@ -140,7 +144,7 @@ interface PlayerStore {
   buffering: boolean;
   track: TrackInfo | null;
   gainApplied: number | null;
-  waveforms: Record<string, number[]>;
+  waveforms: Record<string, WaveformData>;
 
   queue: Song[];
   baseQueue: Song[];
@@ -170,7 +174,8 @@ interface PlayerStore {
   onEnded: () => void;
   onError: (message: string) => void;
   setGain: (applied: number | null) => void;
-  setWaveform: (trackId: string, peaks: number[]) => void;
+  setWaveform: (trackId: string, peaks: number[], complete: boolean) => void;
+  ensureWaveform: (trackId: string, duration: number) => void;
 
   toggle: () => void;
   play: () => void;
@@ -239,8 +244,10 @@ export const usePlayer = create<PlayerStore>((set, get) => {
 
     void api
       .getWaveform(song.id)
-      .then((peaks) => {
-        if (peaks && peaks.length) get().setWaveform(song.id, peaks);
+      .then((data) => {
+        if (data?.peaks.length) {
+          get().setWaveform(song.id, data.peaks, data.complete);
+        }
       })
       .catch(() => {});
   };
@@ -409,8 +416,10 @@ export const usePlayer = create<PlayerStore>((set, get) => {
       if (trackId) {
         void api
           .getWaveform(trackId)
-          .then((peaks) => {
-            if (peaks?.length) get().setWaveform(trackId, peaks);
+          .then((data) => {
+            if (data?.peaks.length) {
+              get().setWaveform(trackId, data.peaks, data.complete);
+            }
           })
           .catch(() => {});
       }
@@ -478,18 +487,47 @@ export const usePlayer = create<PlayerStore>((set, get) => {
 
     setGain: (applied) => set({ gainApplied: applied }),
 
-    setWaveform: (trackId, peaks) => {
+    setWaveform: (trackId, peaks, complete) => {
       if (!trackId || !peaks.length) return;
       set((state) => {
-        const waveforms = { ...state.waveforms, [trackId]: peaks };
+        const existing = state.waveforms[trackId];
+        const merged =
+          existing && existing.peaks.length > peaks.length
+            ? existing.peaks
+            : peaks;
+        const waveforms = {
+          ...state.waveforms,
+          [trackId]: {
+            peaks: merged,
+            complete: complete || Boolean(existing?.complete),
+          } satisfies WaveformData,
+        };
         const keys = Object.keys(waveforms);
-        if (keys.length > 24) {
-          for (const key of keys.slice(0, keys.length - 24)) {
+        if (keys.length > 64) {
+          for (const key of keys.slice(0, keys.length - 64)) {
             delete waveforms[key];
           }
         }
         return { waveforms };
       });
+    },
+
+    ensureWaveform: (trackId, duration) => {
+      if (!trackId || duration <= 0) return;
+      const existing = get().waveforms[trackId];
+      if (existing?.complete) return;
+      if (requestedWaveforms.has(trackId)) return;
+      requestedWaveforms.add(trackId);
+      void api
+        .ensureWaveform(trackId, duration)
+        .then((data) => {
+          if (data?.peaks.length) {
+            get().setWaveform(trackId, data.peaks, data.complete);
+          }
+        })
+        .catch(() => {
+          requestedWaveforms.delete(trackId);
+        });
     },
 
     toggle: () => {

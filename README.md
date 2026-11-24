@@ -21,7 +21,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Borderless, theme-matched window controls (minimize, maximize/restore, close) in the titlebar and the fullscreen view, with drag and double-click-to-maximize support.
 - Automatic update checks (opt-out) for the Windows installer and the Linux AppImage, with in-app download progress and restart-to-apply.
 - ReplayGain: Off / Track / Album, applied with GStreamer `rgvolume`, optional pre-amp.
-- Real waveform seek bar in the player bar and the fullscreen view (decoded in Rust and cached); hovering highlights the waveform bars up to the skip target and shows the target time, and the bar is hidden while the fullscreen view is open so only one timeline is visible.
+- Real waveform seek bar in the player bar and the fullscreen view, generated from the audio you play (a zero-bandwidth playthrough probe) plus a background analyser, persisted across restarts, and filled in progressively while the rest is analysed; hovering highlights the waveform bars up to the skip target and shows the target time, and the bar is hidden while the fullscreen view is open so only one timeline is visible.
 - Fullscreen Now Playing view with a calm dim backdrop, a toggleable sidebar (queue, lyrics, technical info), and an inline volume control.
 - Synced or plain lyrics from the server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
 - Local lyrics layer and editor: tap-sync lines to playback, nudge/distribute timings, import and export `.lrc` files, and manage every edited track from a dedicated Lyrics view. Local lyrics override server lyrics in hush.
@@ -124,7 +124,7 @@ hush-tauri/
 │   ├── views/                   Home · Together · Artists · Albums · Songs · Genres · Playlists · Liked ·
 │   │                            Lyrics · LyricsEditor · Settings
 │   ├── store/                   player.ts · library.ts · session.ts · settings.ts · updater.ts · contextMenu.ts
-│   ├── lib/                     ipc.ts · types.ts · format.ts · lyrics.ts · waveform.ts · useAsync.ts · hooks.ts
+│   ├── lib/                     ipc.ts · types.ts · format.ts · lyrics.ts · useAsync.ts · hooks.ts
 │   └── styles/                  tokens.css · global.css · *.module.css
 ├── hush-sync/                   # self-hosted Listen Together relay
 │   ├── Cargo.toml · Dockerfile · README.md
@@ -267,9 +267,13 @@ The desktop identifier is `app.hush.desktop`, so the config file lives at:
 ```
 ~/.config/app.hush.desktop/settings.json         # Linux
 ~/.config/app.hush.desktop/player-session.json   # Linux (resume queue)
+~/.config/app.hush.desktop/waveforms.json        # Linux (cached waveforms)
 %APPDATA%\app.hush.desktop\settings.json         # Windows
 %APPDATA%\app.hush.desktop\player-session.json   # Windows (resume queue)
+%APPDATA%\app.hush.desktop\waveforms.json        # Windows (cached waveforms)
 ```
+
+Waveforms are collected from the audio being played (no second download) and from a background analyser, then reduced to 240 peak bars per track. Up to 2,000 tracks are kept and written atomically, so a track you have played once shows its waveform instantly — even after a restart.
 
 ### Releases
 
@@ -660,7 +664,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Genres list loads with counts; a genre page plays its songs (and albums when the server supports `byGenre`).
 - [ ] Play, pause, stop, next, previous work; progress and time labels update.
 - [ ] Click/drag the seek bar; volume slider and mute work.
-- [ ] The waveform timeline renders real peaks and seeks correctly.
+- [ ] The waveform timeline fills in from the left on first play, is instant on replay/restart, and seeks correctly.
 - [ ] Add/remove favorites for a song and an album; reload and confirm they persist.
 - [ ] Shuffle toggles order; repeat cycles off → all → one; queue advances on track end.
 - [ ] Add to queue / play next / remove / drag-reorder / clear queue; save queue as a playlist.
