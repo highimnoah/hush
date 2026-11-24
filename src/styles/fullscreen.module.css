@@ -191,6 +191,9 @@
   width: 200px;
   max-width: 100%;
 }
+.volumeSliderWrap {
+  flex: none;
+}
 
 /* ---------- Sidebar ---------- */
 .sidebar {

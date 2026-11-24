@@ -9,9 +9,6 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  Volume1,
-  Volume2,
-  VolumeX,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -30,7 +27,7 @@ import fullscreen from "../styles/fullscreen.module.css";
 import { Artwork } from "./ui/Artwork";
 import { ExplicitBadge } from "./ui/ExplicitBadge";
 import { LyricsPanel } from "./ui/LyricsPanel";
-import { Slider } from "./ui/Slider";
+import { VolumeControl } from "./ui/VolumeControl";
 import { WaveformSeek } from "./ui/WaveformSeek";
 import { WindowControls } from "./ui/WindowControls";
 
@@ -63,11 +60,6 @@ export function NowPlaying() {
   const setShuffle = usePlayer((state) => state.setShuffle);
   const cycleRepeat = usePlayer((state) => state.cycleRepeat);
   const playIndex = usePlayer((state) => state.playIndex);
-
-  const volume = usePlayer((state) => state.volume);
-  const muted = usePlayer((state) => state.muted);
-  const setVolume = usePlayer((state) => state.setVolume);
-  const toggleMute = usePlayer((state) => state.toggleMute);
 
   const settings = useSettings((state) => state.settings);
   const patchSettings = useSettings((state) => state.patch);
@@ -158,14 +150,6 @@ export function NowPlaying() {
   const hasTrack = Boolean(track);
   const elapsed = preview ?? position;
   const total = duration || track?.duration || 0;
-  const volumeIcon =
-    muted || volume === 0 ? (
-      <VolumeX size={17} />
-    ) : volume < 0.5 ? (
-      <Volume1 size={17} />
-    ) : (
-      <Volume2 size={17} />
-    );
   return (
     <section className={fullscreen.overlay} aria-label="Now playing">
       <div className={fullscreen.top} data-tauri-drag-region>
@@ -310,21 +294,10 @@ export function NowPlaying() {
             </div>
 
             <div className={fullscreen.volumeRow}>
-              <button
-                type="button"
-                className={fullscreen.ctrlBtn}
-                onClick={() => toggleMute()}
-                aria-label={muted ? "Unmute" : "Mute"}
-              >
-                {volumeIcon}
-              </button>
-              <Slider
-                className={fullscreen.volumeSlider}
-                value={volume}
-                max={1}
-                step={0.01}
-                ariaLabel="Volume"
-                onChange={(value) => setVolume(value)}
+              <VolumeControl
+                sliderClassName={fullscreen.volumeSlider}
+                buttonClassName={fullscreen.ctrlBtn}
+                sliderWrapClassName={fullscreen.volumeSliderWrap}
               />
             </div>
           </div>

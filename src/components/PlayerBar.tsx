@@ -10,9 +10,6 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  Volume1,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -26,7 +23,7 @@ import { usePlayer } from "../store/player";
 import styles from "../styles/player.module.css";
 import ui from "../styles/ui.module.css";
 import { Artwork } from "./ui/Artwork";
-import { Slider } from "./ui/Slider";
+import { VolumeControl } from "./ui/VolumeControl";
 import { WaveformSeek } from "./ui/WaveformSeek";
 
 const SLEEP_MINUTES = [15, 30, 45, 60, 90];
@@ -36,8 +33,6 @@ export function PlayerBar() {
   const status = usePlayer((state) => state.status);
   const position = usePlayer((state) => state.position);
   const duration = usePlayer((state) => state.duration);
-  const volume = usePlayer((state) => state.volume);
-  const muted = usePlayer((state) => state.muted);
   const shuffle = usePlayer((state) => state.shuffle);
   const repeat = usePlayer((state) => state.repeat);
   const replaygain = usePlayer((state) => state.replaygain);
@@ -46,8 +41,6 @@ export function PlayerBar() {
   const next = usePlayer((state) => state.next);
   const prev = usePlayer((state) => state.prev);
   const seek = usePlayer((state) => state.seek);
-  const setVolume = usePlayer((state) => state.setVolume);
-  const toggleMute = usePlayer((state) => state.toggleMute);
   const setShuffle = usePlayer((state) => state.setShuffle);
   const cycleRepeat = usePlayer((state) => state.cycleRepeat);
   const nowPlayingOpen = usePlayer((state) => state.nowPlayingOpen);
@@ -106,14 +99,6 @@ export function PlayerBar() {
   const hasTrack = Boolean(track);
   const elapsed = preview ?? position;
   const total = duration || track?.duration || 0;
-  const volumeIcon =
-    muted || volume === 0 ? (
-      <VolumeX size={17} />
-    ) : volume < 0.5 ? (
-      <Volume1 size={17} />
-    ) : (
-      <Volume2 size={17} />
-    );
 
   const rgLabel =
     replaygain === "off"
@@ -339,24 +324,11 @@ export function PlayerBar() {
           <ListMusic size={17} />
         </button>
 
-        <div className={styles.volumeWrap}>
-          <button
-            type="button"
-            className={styles.ctrlBtn}
-            onClick={() => toggleMute()}
-            aria-label={muted ? "Unmute" : "Mute"}
-          >
-            {volumeIcon}
-          </button>
-          <Slider
-            className={styles.volumeSlider}
-            value={volume}
-            max={1}
-            step={0.01}
-            ariaLabel="Volume"
-            onChange={(value) => setVolume(value)}
-          />
-        </div>
+        <VolumeControl
+          className={styles.volumeWrap}
+          sliderClassName={styles.volumeSlider}
+          buttonClassName={styles.ctrlBtn}
+        />
 
         <button
           type="button"
