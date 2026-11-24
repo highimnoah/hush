@@ -1,3 +1,4 @@
+pub mod artist_images;
 pub mod commands;
 pub mod config;
 pub mod discord;
@@ -16,6 +17,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
+use artist_images::ArtistImageStore;
 use config::ConfigStore;
 use discord::DiscordHandle;
 use mpris::MprisHandle;
@@ -34,6 +36,7 @@ pub struct AppState {
     pub session: SessionHandle,
     pub session_store: Arc<SessionStore>,
     pub lyrics: Arc<lyrics::LyricsStore>,
+    pub artist_images: ArtistImageStore,
     pub http: reqwest::Client,
 }
 
@@ -47,6 +50,24 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("hushimg", |ctx, request| {
+            let state = ctx.app_handle().state::<AppState>();
+            let file = request.uri().path().trim_start_matches('/');
+            match state.artist_images.read_cached(file) {
+                Some((bytes, content_type)) => tauri::http::Response::builder()
+                    .header(tauri::http::header::CONTENT_TYPE, content_type)
+                    .header(
+                        tauri::http::header::CACHE_CONTROL,
+                        "public, max-age=604800, immutable",
+                    )
+                    .body(bytes)
+                    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new())),
+                None => tauri::http::Response::builder()
+                    .status(tauri::http::StatusCode::NOT_FOUND)
+                    .body(Vec::new())
+                    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new())),
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -60,6 +81,10 @@ pub fn run() {
             let session_store = Arc::new(SessionStore::load(config_dir.clone()));
             let config = Arc::new(ConfigStore::load(config_dir));
             let lyrics = Arc::new(lyrics::LyricsStore::load(app.path().app_data_dir()?));
+            let artist_images = ArtistImageStore::new(
+                app.path().app_cache_dir()?.join("artist-images"),
+                http.clone(),
+            );
             let settings = config.get();
 
             restore_window_state(app.handle(), &settings);
@@ -103,6 +128,7 @@ pub fn run() {
                 session,
                 session_store,
                 lyrics,
+                artist_images,
                 http,
             });
 
@@ -142,6 +168,9 @@ pub fn run() {
             commands::import_lyrics_file,
             commands::player_position_now,
             commands::get_genres,
+            commands::artist_image,
+            commands::artist_image_cache_info,
+            commands::clear_artist_image_cache,
             commands::get_songs_by_genre,
             commands::get_albums_by_genre,
             commands::create_playlist,

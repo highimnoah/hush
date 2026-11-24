@@ -23,6 +23,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Synced or plain lyrics from the server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
 - Local lyrics layer and editor: tap-sync lines to playback, nudge/distribute timings, import and export `.lrc` files, and manage every edited track from a dedicated Lyrics view. Local lyrics override server lyrics in hush.
 - Now Playing track information (format, bit depth, sample rate, bitrate, channels, ReplayGain gain, server) plus an explicit-content badge.
+- Artist pictures in artist cards and the artist page: server-provided images first, then an automatic, locally cached Deezer lookup with an iTunes fallback (can be limited to server-only or turned off in Settings).
 - Favorites for songs (heart in track lists) and albums (hero + card).
 - Playlist editing: create, rename, delete, add/remove songs, and drag-to-reorder.
 - Resume session: the queue, track, position, shuffle and repeat state are restored on launch (optionally auto-resuming playback).
@@ -51,6 +52,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 ┌──────────────┴───────────────────────────────▼───────────────────────────────┐
 │  Rust core                                                                   │
 │  ├─ config.rs        settings persistence (atomic JSON write)                │
+│  ├─ artist_images.rs artist artwork providers + disk cache (hushimg://)      │
 │  ├─ lyrics.rs        local LRC storage, parser and serializer               │
 │  ├─ session_state.rs resumable queue/position snapshot (atomic JSON)         │
 │  ├─ server/          MusicServer trait + SubsonicClient (reqwest + rustls)   │
@@ -134,6 +136,7 @@ hush-tauri/
     ├── gstreamer-runtime/       # Windows runtime staging (binaries gitignored)
     └── src/
         ├── main.rs · lib.rs · commands.rs · config.rs · error.rs · events.rs · playback.rs
+        ├── artist_images.rs  (artist artwork providers, disk cache, hushimg:// handler)
         ├── lyrics.rs  (local .lrc parser, storage and export helpers)
         ├── session_state.rs  (resumable queue/position snapshot)
         ├── server/  mod.rs (trait) · subsonic.rs · types.rs
@@ -379,6 +382,8 @@ Everything is editable in **Settings**. A representative `settings.json`:
   "accent": "blue",
   "fullscreenSidebarOpen": true,
   "fullscreenSidebarPanel": "queue",
+  "artistImages": "auto",
+  "autoUpdate": true,
   "sessionName": "noah",
   "sessionRelayUrl": "ws://127.0.0.1:8787",
   "windowWidth": 1280,
@@ -397,6 +402,21 @@ Credentials are stored locally in plaintext JSON. Prefer a token, and treat the 
 ### Accents
 
 `blue` (default), `mint`, `rose`, `amber`, `lavender`.
+
+### Artist images
+
+Artist pictures are resolved in this order:
+
+1. `artistImageUrl` from your server (Navidrome sends one when the artist folder has an image).
+2. A **Deezer** artist search (no API key; the result must match the artist name).
+3. An **iTunes** album-art lookup as a fallback (upscaled to 600×600).
+
+Downloads happen in Rust and are cached under the app cache directory
+(`artist-images/`, with a small `index.json`). The WebView loads cached images
+through the `hushimg://` protocol, so they work offline. Misses are cached for
+a week to avoid re-querying obscure artists. Settings → Artist images switches
+between **Off**, **Server** (no external lookups) and **Automatic** (default),
+and can clear the cache; only artist names are sent to the providers.
 
 ---
 
@@ -606,6 +626,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - **Explicit badges** require the server to expose `explicitStatus` (Navidrome 0.56+, which reads `ITUNESADVISORY`/`rtng` at scan time). Older servers only get the `🅴`-in-title fallback.
 - **Resume session** is written to `player-session.json` with a short debounce; an abrupt kill can lose the last few seconds of position.
 - **Discord cover art** requires a publicly reachable HTTPS cover URL. When unavailable (or disabled) hush falls back to the static `hush` asset key.
+- **Artist images** in `Automatic` mode send artist names to Deezer and iTunes when no server image exists. Set the mode to **Server** or **Off** for fully offline operation; cached images keep working offline regardless.
 - **Credentials** are stored locally in plaintext JSON; use a token. Encrypted storage (Stronghold/keyring) is a possible future upgrade.
 - **Listen Together** requires a running `hush-sync` relay, the same Navidrome server for all participants, and host-only control (no collaborative queue yet). Sync is music-grade, not video-grade.
 - **Media controls** are MPRIS on Linux and SMTC on Windows. SMTC is bound to the main window handle: closing the main window while the mini player keeps the app alive unregisters the overlay until the main window is shown again. `souvlaki` cover art is passed only for HTTPS URLs (token-bearing query strings never go over plain HTTP).
@@ -640,6 +661,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Album playback is gapless; fade mode ramps at boundaries; changing the mode applies immediately.
 - [ ] Fullscreen: toggle sidebar; switch queue/lyrics/info tabs; the volume slider and mute control stay in sync with the player bar; the sidebar tab persists.
 - [ ] Synced lyrics highlight and auto-scroll; clicking a line seeks; plain lyrics render; missing lyrics show an empty state.
+- [ ] Artist images appear in the artist grid and artist page; obscure artists keep the initial-letter avatar; no request burst when opening the full artist grid; images still show offline after they were cached.
 - [ ] Discord presence appears while playing, hides on pause/stop; templates update; album art and the progress timeline show.
 - [ ] Tray play/pause/next/previous/show/quit.
 - [ ] MPRIS (Linux): `playerctl play-pause`, `playerctl next`, media keys.
@@ -656,5 +678,6 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Host leaves → the relay promotes another member; relay down → clear error state.
 - [ ] Custom titlebar: drag the window, double-click to maximize/restore, resize from the edges/corners, and verify minimize/maximize/close; the maximize icon flips when the window is restored or maximized. The controls are also reachable in the fullscreen Now Playing view.
 - [ ] Updates: Settings shows the current version; a manual check reports up to date or a network error gracefully; the startup check respects the "Check automatically" toggle; on a published release, download progress and "Restart now" work.
+- [ ] Settings → Artist images: Off / Server / Automatic behave as described; the cache size is shown and "Clear cache" empties it.
 - [ ] Keyboard shortcuts work; focus rings visible; contrast is comfortable.
 - [ ] Launch on X11 and Wayland; verify the NVIDIA software-rendering fallback.

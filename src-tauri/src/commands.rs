@@ -220,6 +220,30 @@ pub async fn get_genres(state: State<'_, AppState>) -> Result<Vec<Genre>> {
     build_server(&state)?.genres().await
 }
 
+// ---------------------------------------------------------------------------
+// Artist artwork
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn artist_image(
+    state: State<'_, AppState>,
+    name: String,
+    server_url: Option<String>,
+) -> Result<Option<crate::artist_images::ArtistImageInfo>> {
+    let mode = state.config.get().artist_images;
+    Ok(state.artist_images.resolve(&name, server_url, mode).await)
+}
+
+#[tauri::command]
+pub fn artist_image_cache_info(state: State<'_, AppState>) -> crate::artist_images::CacheInfo {
+    state.artist_images.info()
+}
+
+#[tauri::command]
+pub fn clear_artist_image_cache(state: State<'_, AppState>) -> crate::artist_images::CacheInfo {
+    state.artist_images.clear()
+}
+
 #[tauri::command]
 pub async fn get_songs_by_genre(
     state: State<'_, AppState>,

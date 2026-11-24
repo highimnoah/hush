@@ -147,6 +147,13 @@
   align-items: center;
   text-align: center;
 }
+.artistAvatarImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
 .artistCard .cardTitle {
   margin-top: 2px;
 }

@@ -8,6 +8,7 @@ import {
   Radio,
   RefreshCw,
   Server,
+  Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -15,7 +16,11 @@ import { Slider } from "../components/ui/Slider";
 import { ErrorState } from "../components/ui/ErrorState";
 import { Loading } from "../components/ui/States";
 import { Switch } from "../components/ui/Switch";
+import { formatBytes } from "../lib/format";
+import { api } from "../lib/ipc";
 import type {
+  ArtistImageCacheInfo,
+  ArtistImageMode,
   ReplayGainMode,
   Settings,
   TransitionMode,
@@ -70,6 +75,11 @@ export function SettingsView() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [testState, setTestState] = useState<TestState>("idle");
   const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [artistCache, setArtistCache] = useState<ArtistImageCacheInfo | null>(
+    null,
+  );
+  const [clearingCache, setClearingCache] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings && form === null) {
@@ -100,6 +110,13 @@ export function SettingsView() {
   useEffect(() => {
     void loadVersion();
   }, [loadVersion]);
+
+  useEffect(() => {
+    void api
+      .artistImageCacheInfo()
+      .then(setArtistCache)
+      .catch(() => {});
+  }, []);
 
   if (!loaded) {
     return (
@@ -164,6 +181,23 @@ export function SettingsView() {
     } catch (err) {
       setTestState("error");
       setTestMessage(String(err));
+    }
+  };
+
+  const handleClearArtistCache = async () => {
+    setClearingCache(true);
+    setCacheMessage(null);
+    try {
+      const cleared = await api.clearArtistImageCache();
+      setArtistCache(await api.artistImageCacheInfo());
+      const size = formatBytes(cleared.bytes) ?? "0 B";
+      setCacheMessage(
+        `Cleared ${cleared.count} ${cleared.count === 1 ? "image" : "images"} (${size}).`,
+      );
+    } catch (err) {
+      setCacheMessage(String(err));
+    } finally {
+      setClearingCache(false);
     }
   };
 
@@ -720,6 +754,81 @@ export function SettingsView() {
               {accent.label}
             </button>
           ))}
+        </div>
+      </section>
+
+      {/* Artist images */}
+      <section className={styles.card}>
+        <div className={styles.cardHead}>
+          <div className={styles.cardIcon}>
+            <Users size={18} />
+          </div>
+          <div>
+            <div className={styles.cardTitle}>Artist images</div>
+            <div className={styles.cardDesc}>
+              Show artist pictures in the library. Missing images are fetched
+              from Deezer, with iTunes as a fallback.
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.stack}>
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>Artwork source</div>
+              <div className={styles.rowHint}>
+                Off hides artist pictures, Server uses only images from your
+                music server, Automatic also downloads missing ones.
+              </div>
+            </div>
+            <div className={ui.segmented}>
+              {(["off", "server", "auto"] as ArtistImageMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`${ui.segment} ${form.artistImages === mode ? ui.segmentActive : ""}`}
+                  onClick={() => update({ artistImages: mode })}
+                >
+                  {mode === "off"
+                    ? "Off"
+                    : mode === "server"
+                      ? "Server"
+                      : "Automatic"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.rowBetween}>
+            <div>
+              <div className={styles.rowLabel}>Cached images</div>
+              <div className={styles.rowHint}>
+                {artistCache
+                  ? `${artistCache.count} ${
+                      artistCache.count === 1 ? "image" : "images"
+                    } · ${formatBytes(artistCache.bytes) ?? "0 B"}`
+                  : "Checking cache…"}
+              </div>
+            </div>
+            <button
+              type="button"
+              className={`${ui.button} ${ui.ghost}`}
+              onClick={() => void handleClearArtistCache()}
+              disabled={clearingCache || !artistCache?.count}
+            >
+              {clearingCache ? "Clearing…" : "Clear cache"}
+            </button>
+          </div>
+
+          {cacheMessage ? (
+            <div className={styles.help}>{cacheMessage}</div>
+          ) : null}
+
+          <p className={styles.help} style={{ marginTop: 2 }}>
+            Automatic lookups send only the artist name to Deezer/iTunes.
+            Downloaded pictures are cached locally and served to the app from
+            the cache.
+          </p>
         </div>
       </section>
 

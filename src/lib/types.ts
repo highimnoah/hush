@@ -7,6 +7,17 @@ export type StarKind = "song" | "album";
 export type TransitionMode = "gapless" | "fade";
 export type SleepMode = "minutes" | "endOfTrack" | "endOfQueue";
 export type FullscreenPanel = "queue" | "lyrics" | "info";
+export type ArtistImageMode = "off" | "server" | "auto";
+
+export interface ArtistImageInfo {
+  source: string;
+  url: string;
+}
+
+export interface ArtistImageCacheInfo {
+  bytes: number;
+  count: number;
+}
 
 export interface Song {
   id: string;
@@ -183,6 +194,7 @@ export interface Settings {
   accent: string;
   fullscreenSidebarOpen: boolean;
   fullscreenSidebarPanel: FullscreenPanel;
+  artistImages: ArtistImageMode;
   autoUpdate: boolean;
   sessionName: string;
   sessionRelayUrl: string;

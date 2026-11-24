@@ -31,6 +31,17 @@ pub enum TransitionMode {
     Fade,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArtistImageMode {
+    Off,
+    /// Only use images provided by the music server (`artistImageUrl`).
+    Server,
+    /// Also fetch missing images from public providers (Deezer, iTunes).
+    #[default]
+    Auto,
+}
+
 /// Persisted application settings. Stored as JSON in the app config directory.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -74,6 +85,8 @@ pub struct Settings {
     pub fullscreen_sidebar_open: bool,
     /// Last active fullscreen sidebar tab: "queue", "lyrics" or "info".
     pub fullscreen_sidebar_panel: String,
+    /// Artist artwork: off, server-only, or automatic external fetch.
+    pub artist_images: ArtistImageMode,
 
     // --- updates ---
     /// Check for a new release shortly after launch.
@@ -118,6 +131,7 @@ impl Default for Settings {
             accent: "blue".into(),
             fullscreen_sidebar_open: true,
             fullscreen_sidebar_panel: "queue".into(),
+            artist_images: ArtistImageMode::Auto,
 
             auto_update: true,
 

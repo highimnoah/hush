@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 
 import { AlbumCard } from "../components/library/AlbumCard";
+import { ArtistAvatar } from "../components/ui/ArtistAvatar";
 import { AsyncContent } from "../components/ui/AsyncContent";
 import { EmptyState } from "../components/ui/EmptyState";
 import { NotConfigured } from "../components/ui/NotConfigured";
@@ -13,14 +14,16 @@ import styles from "../styles/library.module.css";
 
 function ArtistBody({ detail }: { detail: ArtistDetail }) {
   const { artist, albums } = detail;
-  const initial = artist.name?.trim().charAt(0).toUpperCase() || "?";
 
   return (
     <>
       <div className={styles.hero}>
-        <div className={styles.heroArtistAvatar} aria-hidden="true">
-          {initial}
-        </div>
+        <ArtistAvatar
+          artistId={artist.id}
+          name={artist.name}
+          serverUrl={artist.artistImageUrl}
+          className={styles.heroArtistAvatar}
+        />
         <div className={styles.heroInfo}>
           <div className={styles.heroKind}>Artist</div>
           <h1 className={styles.heroTitle}>{artist.name}</h1>

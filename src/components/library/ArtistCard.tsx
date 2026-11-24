@@ -2,18 +2,20 @@ import { Link } from "react-router-dom";
 
 import type { Artist } from "../../lib/types";
 import styles from "../../styles/library.module.css";
+import { ArtistAvatar } from "../ui/ArtistAvatar";
 
 export function ArtistCard({ artist }: { artist: Artist }) {
-  const initial = artist.name?.trim().charAt(0).toUpperCase() || "?";
-
   return (
     <Link
       to={`/artists/${artist.id}`}
       className={`${styles.card} ${styles.artistCard}`}
     >
-      <div className={styles.artistAvatar} aria-hidden="true">
-        {initial}
-      </div>
+      <ArtistAvatar
+        artistId={artist.id}
+        name={artist.name}
+        serverUrl={artist.artistImageUrl}
+        className={styles.artistAvatar}
+      />
       <div>
         <div className={styles.cardTitle} title={artist.name}>
           {artist.name}

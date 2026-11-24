@@ -7,6 +7,8 @@ import type {
   AlbumDetail,
   Artist,
   ArtistDetail,
+  ArtistImageCacheInfo,
+  ArtistImageInfo,
   GainEvent,
   Genre,
   ImportedLyrics,
@@ -55,6 +57,15 @@ export const api = {
   getStarred: () => invoke<SearchResults>("get_starred"),
   getRandomSongs: (size = 50) =>
     invoke<Song[]>("get_random_songs", { size }),
+  artistImage: (name: string, serverUrl?: string | null) =>
+    invoke<ArtistImageInfo | null>("artist_image", {
+      name,
+      serverUrl: serverUrl ?? null,
+    }),
+  artistImageCacheInfo: () =>
+    invoke<ArtistImageCacheInfo>("artist_image_cache_info"),
+  clearArtistImageCache: () =>
+    invoke<ArtistImageCacheInfo>("clear_artist_image_cache"),
   getLyrics: (id: string) => invoke<Lyrics>("get_lyrics", { id }),
   getLocalLyrics: (trackId: string) =>
     invoke<LocalLyrics | null>("get_local_lyrics", { trackId }),
