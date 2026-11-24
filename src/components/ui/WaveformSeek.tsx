@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 
+import { formatTime } from "../../lib/format";
 import { fallbackPeaks } from "../../lib/waveform";
 import { usePlayer } from "../../store/player";
 import { useSettings } from "../../store/settings";
@@ -38,6 +39,7 @@ export function WaveformSeek({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState<number | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
 
   const currentTrackId = usePlayer((state) => state.track?.id);
   const liveWaveform = usePlayer((state) => {
@@ -61,6 +63,11 @@ export function WaveformSeek({
   const shown = draft ?? value;
   const ratio =
     safeMax > 0 ? Math.min(1, Math.max(0, shown / safeMax)) : 0;
+  const hoverValue = dragging ? draft : hover;
+  const hoverRatio =
+    hoverValue != null && safeMax > 0
+      ? Math.min(1, Math.max(0, hoverValue / safeMax))
+      : null;
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -95,22 +102,50 @@ export function WaveformSeek({
       const gap = Math.min(2, Math.max(0.6, slot * 0.34));
       const barWidth = Math.max(0.7, slot - gap);
       const middle = height / 2;
+      const hoverX = hoverRatio != null ? hoverRatio * width : null;
+      const previewStart = hoverX != null ? Math.min(progressX, hoverX) : 0;
+      const previewEnd = hoverX != null ? Math.max(progressX, hoverX) : 0;
 
+      // The skip indication is drawn into the waveform itself: bars between
+      // the playhead and the hovered/scrubbed position use a softer accent,
+      // and the bar at the target is fully highlighted.
       for (let i = 0; i < count; i += 1) {
         const peak = Math.min(1, Math.max(0.03, data[i] ?? 0));
         const barHeight = Math.max(2, peak * (height - 2));
         const x = i * slot + gap / 2;
-        const isPlayed = x + barWidth / 2 <= progressX;
-        context.fillStyle = isPlayed ? played : unplayed;
+        const center = x + barWidth / 2;
+        const isPlayed = center <= progressX;
+
+        let fill = isPlayed ? played : unplayed;
+        let alpha = 1;
+
+        if (hoverX != null) {
+          const insidePreview =
+            Math.abs(hoverX - progressX) > 1 &&
+            center >= previewStart &&
+            center <= previewEnd;
+          if (insidePreview) {
+            fill = played;
+            alpha = 0.55;
+          }
+          if (Math.abs(center - hoverX) <= Math.max(barWidth / 2, 1.5)) {
+            fill = played;
+            alpha = 1;
+          }
+        }
+
+        context.globalAlpha = alpha;
+        context.fillStyle = fill;
         context.fillRect(x, middle - barHeight / 2, barWidth, barHeight);
       }
+      context.globalAlpha = 1;
     };
 
     draw();
     const observer = new ResizeObserver(() => draw());
     observer.observe(wrapper);
     return () => observer.disconnect();
-  }, [data, ratio, height, accent]);
+  }, [data, ratio, hoverRatio, height, accent]);
 
   const valueFromClientX = (clientX: number) => {
     const wrapper = wrapperRef.current;
@@ -128,14 +163,21 @@ export function WaveformSeek({
     setDragging(true);
     const next = valueFromClientX(event.clientX);
     setDraft(next);
+    setHover(next);
     onPreview?.(next);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (!dragging || disabled) return;
+    if (disabled || safeMax <= 0) return;
     const next = valueFromClientX(event.clientX);
+    setHover(next);
+    if (!dragging) return;
     setDraft(next);
     onPreview?.(next);
+  };
+
+  const handlePointerLeave = () => {
+    if (!dragging) setHover(null);
   };
 
   const finish = () => {
@@ -196,9 +238,18 @@ export function WaveformSeek({
       onPointerMove={handlePointerMove}
       onPointerUp={finish}
       onPointerCancel={finish}
+      onPointerLeave={handlePointerLeave}
       onKeyDown={handleKeyDown}
     >
       <canvas ref={canvasRef} className={styles.waveformCanvas} />
+      {hoverRatio != null ? (
+        <span
+          className={styles.waveformHint}
+          style={{ left: `${Math.min(96, Math.max(4, hoverRatio * 100))}%` }}
+        >
+          {formatTime(hoverValue ?? 0)}
+        </span>
+      ) : null}
     </div>
   );
 }
