@@ -69,6 +69,8 @@
   gap: 10px;
   min-width: 0;
   cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 250px;
 }
 .cardArt {
   position: relative;
@@ -188,6 +190,8 @@
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   transition: background var(--t);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 58px;
 }
 .row:hover {
   background: var(--surface-2);

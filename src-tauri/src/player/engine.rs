@@ -15,7 +15,7 @@ use crate::player::waveform::WaveformHandle;
 
 use super::{Command, PlaybackStatus, PlayerSnapshot, TrackInfo};
 
-const POSITION_INTERVAL: Duration = Duration::from_millis(300);
+const POSITION_INTERVAL: Duration = Duration::from_millis(200);
 const MPRIS_POSITION_INTERVAL: Duration = Duration::from_millis(1000);
 const DISCORD_REFRESH: Duration = Duration::from_secs(12);
 const LEVELS_INTERVAL: Duration = Duration::from_millis(40);
@@ -133,6 +133,10 @@ struct Engine {
 
     pipeline: Option<gst::Pipeline>,
     volume_el: Option<gst::Element>,
+    /// Real audio sink, used for position queries. The pipeline-level query is
+    /// unreliable once the waveform probe fakesink is in the chain: it reports
+    /// the decode position, which runs ahead of what is audible.
+    audio_sink_el: Option<gst::Element>,
     /// Real audio sink, when it exposes its own stream volume (pulsesink).
     /// Applying volume there makes changes audible immediately.
     sink_volume_el: Option<gst::Element>,
@@ -205,6 +209,7 @@ pub fn run(
         waveforms,
         pipeline: None,
         volume_el: None,
+        audio_sink_el: None,
         sink_volume_el: None,
         fade_el: None,
         rg_el: None,
@@ -348,10 +353,7 @@ impl Engine {
             Command::CancelSleep => self.cancel_sleep(),
             Command::QueryPosition(reply) => {
                 let position = self
-                    .pipeline
-                    .as_ref()
-                    .and_then(|pipeline| pipeline.query_position::<gst::ClockTime>())
-                    .map(|position| position.seconds_f64())
+                    .playback_position()
                     .unwrap_or_else(|| self.snap().position);
                 let _ = reply.send(position);
             }
@@ -642,6 +644,7 @@ impl Engine {
         };
         let _ = pipeline.set_state(gst::State::Paused);
         let _ = pipeline.state(gst::ClockTime::from_seconds(5));
+        self.resolve_audio_sink();
         self.resolve_sink_volume();
 
         if position > 0.5 && position.is_finite() {
@@ -690,8 +693,7 @@ impl Engine {
     fn pause_internal(&mut self) {
         if let Some(pipeline) = self.pipeline.clone() {
             let _ = pipeline.set_state(gst::State::Paused);
-            if let Some(position) = pipeline.query_position::<gst::ClockTime>() {
-                let seconds = position.seconds_f64();
+            if let Some(seconds) = self.playback_position() {
                 self.mutate(|snapshot| snapshot.position = seconds);
             }
         }
@@ -767,6 +769,35 @@ impl Engine {
             self.mpris.seeked(target);
             self.update_discord();
         }
+    }
+
+    /// Locate the real audio sink once per pipeline. Playback position must be
+    /// queried from it directly: once the waveform probe's un-synced fakesink
+    /// is in the chain, the pipeline/playsink query reports the decode
+    /// position, which runs ahead of the audible position by the internal
+    /// queue + sink buffer (about a second).
+    fn resolve_audio_sink(&mut self) {
+        if self.audio_sink_el.is_some() {
+            return;
+        }
+        let Some(pipeline) = self.pipeline.clone() else {
+            return;
+        };
+        self.audio_sink_el = find_audio_sink(&pipeline);
+    }
+
+    /// Audible playback position in seconds. Falls back to the pipeline query
+    /// when no concrete sink could be found.
+    fn playback_position(&self) -> Option<f64> {
+        if let Some(sink) = self.audio_sink_el.as_ref() {
+            if let Some(position) = sink.query_position::<gst::ClockTime>() {
+                return Some(position.seconds_f64());
+            }
+        }
+        self.pipeline
+            .as_ref()
+            .and_then(|pipeline| pipeline.query_position::<gst::ClockTime>())
+            .map(|position| position.seconds_f64())
     }
 
     /// Find the real audio sink once per pipeline. PulseAudio/PipeWire apply a
@@ -1073,11 +1104,7 @@ impl Engine {
 
         let remaining = (snapshot.duration - snapshot.position).max(0.0);
         let near_end = remaining <= WRAP_WINDOW;
-        let query = self
-            .pipeline
-            .as_ref()
-            .and_then(|pipeline| pipeline.query_position::<gst::ClockTime>())
-            .map(|position| position.seconds_f64());
+        let query = self.playback_position();
 
         if near_end
             && snapshot.position > 0.5
@@ -1228,22 +1255,19 @@ impl Engine {
                     .checked_sub(POSITION_SETTLE)
                     .map(|advanced| advanced.elapsed().as_secs_f64() + 1.0)
             });
-            if let Some(pipeline) = self.pipeline.clone() {
-                if let Some(position) = pipeline.query_position::<gst::ClockTime>() {
-                    let seconds = position.seconds_f64();
-                    if seconds.is_finite() {
-                        let value = seconds.max(0.0);
-                        let plausible = settle_limit
-                            .map(|limit| value <= limit)
-                            .unwrap_or(true);
-                        if plausible {
-                            let clamped = if snapshot.duration > 0.0 {
-                                value.clamp(0.0, snapshot.duration)
-                            } else {
-                                value
-                            };
-                            self.mutate(|state| state.position = clamped);
-                        }
+            if let Some(seconds) = self.playback_position() {
+                if seconds.is_finite() {
+                    let value = seconds.max(0.0);
+                    let plausible = settle_limit
+                        .map(|limit| value <= limit)
+                        .unwrap_or(true);
+                    if plausible {
+                        let clamped = if snapshot.duration > 0.0 {
+                            value.clamp(0.0, snapshot.duration)
+                        } else {
+                            value
+                        };
+                        self.mutate(|state| state.position = clamped);
                     }
                 }
             }
@@ -1407,12 +1431,38 @@ impl Engine {
             let _ = pipeline.set_state(gst::State::Null);
         }
         self.volume_el = None;
+        self.audio_sink_el = None;
         self.sink_volume_el = None;
         self.fade_el = None;
         self.rg_el = None;
         self.last_gain = None;
         self.last_levels = None;
         self.settle_until = None;
+    }
+}
+
+/// Locate the concrete audio sink (the element whose clock represents the
+/// device). Wrapper bins such as `autoaudiosink` are only used as a fallback.
+fn find_audio_sink(pipeline: &gst::Pipeline) -> Option<gst::Element> {
+    let mut fallback = None;
+    let mut iter = pipeline.iterate_recurse();
+    loop {
+        match iter.next() {
+            Ok(Some(element)) => {
+                let klass = element.metadata("klass").unwrap_or_default();
+                if !(klass.contains("Sink") && klass.contains("Audio")) {
+                    continue;
+                }
+                if !element.type_().is_a(gst::Bin::static_type()) {
+                    return Some(element);
+                }
+                if fallback.is_none() {
+                    fallback = Some(element);
+                }
+            }
+            Ok(None) => return fallback,
+            Err(_) => iter.resync(),
+        }
     }
 }
 
@@ -1514,5 +1564,90 @@ mod tests {
         sink.set_property("volume", 0.42);
         assert!((sink.property::<f64>("volume") - 0.42).abs() < 0.05);
         sink.set_property("mute", true);
+    }
+
+    /// The waveform probe puts an un-synced fakesink in the audio chain, which
+    /// makes the pipeline position query lead the audible position. Position
+    /// must therefore come from the real sink. Needs an audio device; run with
+    /// `cargo test engine::tests -- --ignored`.
+    #[test]
+    #[ignore]
+    fn sink_position_does_not_lead_audio() {
+        let _ = gst::init();
+        let path = std::env::temp_dir().join("hush-position-test.wav");
+        write_silence_wav(&path, 20);
+
+        let playbin = gst::ElementFactory::make("playbin")
+            .property("uri", format!("file://{}", path.display()))
+            .build()
+            .expect("playbin");
+        let video_sink = gst::ElementFactory::make("fakesink")
+            .property("sync", false)
+            .property("async", false)
+            .build()
+            .expect("video sink");
+        playbin.set_property("video-sink", &video_sink);
+
+        // Replicate hush's audio filter: tee with a playthrough probe branch.
+        let chain = gst::Bin::new();
+        let tee = gst::ElementFactory::make("tee").build().unwrap();
+        let volume = gst::ElementFactory::make("volume").build().unwrap();
+        let convert = gst::ElementFactory::make("audioconvert").build().unwrap();
+        let resample = gst::ElementFactory::make("audioresample").build().unwrap();
+        let caps = gst::Caps::builder("audio/x-raw")
+            .field("format", "S16LE")
+            .field("channels", 1i32)
+            .field("rate", 4000i32)
+            .build();
+        let filter = gst::ElementFactory::make("capsfilter")
+            .property("caps", caps)
+            .build()
+            .unwrap();
+        let probe_sink = gst::ElementFactory::make("fakesink")
+            .property("sync", false)
+            .property("async", false)
+            .build()
+            .unwrap();
+        for element in [&tee, &volume, &convert, &resample, &filter, &probe_sink] {
+            chain.add(element).unwrap();
+        }
+        gst::Element::link_many([&convert, &resample, &filter, &probe_sink]).unwrap();
+        let main_pad = tee.request_pad_simple("src_%u").unwrap();
+        main_pad
+            .link(&volume.static_pad("sink").unwrap())
+            .unwrap();
+        let probe_pad = tee.request_pad_simple("src_%u").unwrap();
+        probe_pad
+            .link(&convert.static_pad("sink").unwrap())
+            .unwrap();
+        let sink_ghost = gst::GhostPad::with_target(&tee.static_pad("sink").unwrap()).unwrap();
+        let src_ghost = gst::GhostPad::with_target(&volume.static_pad("src").unwrap()).unwrap();
+        chain.add_pad(&sink_ghost).unwrap();
+        chain.add_pad(&src_ghost).unwrap();
+        playbin.set_property("audio-filter", &chain);
+
+        let pipeline = gst::Pipeline::new();
+        pipeline.add(&playbin).unwrap();
+        pipeline.set_state(gst::State::Playing).unwrap();
+        std::thread::sleep(Duration::from_millis(2_500));
+
+        let pipeline_position = pipeline
+            .query_position::<gst::ClockTime>()
+            .map(|value| value.seconds_f64())
+            .unwrap_or(0.0);
+        let sink = find_audio_sink(&pipeline).expect("concrete audio sink");
+        let sink_position = sink
+            .query_position::<gst::ClockTime>()
+            .map(|value| value.seconds_f64())
+            .unwrap_or(0.0);
+
+        let _ = pipeline.set_state(gst::State::Null);
+        let _ = std::fs::remove_file(&path);
+
+        assert!(sink_position > 0.0);
+        assert!(
+            pipeline_position - sink_position > 0.2,
+            "expected the pipeline query to lead the sink: pipeline={pipeline_position:.2} sink={sink_position:.2}"
+        );
     }
 }

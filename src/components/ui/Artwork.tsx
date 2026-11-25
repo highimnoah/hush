@@ -79,6 +79,7 @@ export function Artwork({
       src={resolved}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
+      decoding="async"
       onError={() => setFailed(true)}
       draggable={false}
     />

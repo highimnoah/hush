@@ -40,6 +40,11 @@ export function WaveformSeek({
 }: WaveformSeekProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const colorsRef = useRef<{
+    accent: string;
+    played: string;
+    unplayed: string;
+  } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -88,82 +93,101 @@ export function WaveformSeek({
       ? Math.min(1, Math.max(0, hoverValue / safeMax))
       : null;
 
-  useEffect(() => {
+  const drawRef = useRef<() => void>(() => {});
+  const draw = () => {
     const wrapper = wrapperRef.current;
     const canvas = canvasRef.current;
     if (!wrapper || !canvas) return;
 
-    const draw = () => {
-      const rect = wrapper.getBoundingClientRect();
-      const width = Math.max(1, Math.floor(rect.width));
-      const dpr = window.devicePixelRatio || 1;
-      const pixelWidth = Math.max(1, Math.floor(width * dpr));
-      const pixelHeight = Math.max(1, Math.floor(height * dpr));
+    const rect = wrapper.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width));
+    const dpr = window.devicePixelRatio || 1;
+    const pixelWidth = Math.max(1, Math.floor(width * dpr));
+    const pixelHeight = Math.max(1, Math.floor(height * dpr));
 
-      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-        canvas.width = pixelWidth;
-        canvas.height = pixelHeight;
-      }
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
 
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      context.clearRect(0, 0, width, height);
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
 
+    // Reading the theme colors forces a style recalculation, so cache them
+    // per accent: the waveform redraws several times per second.
+    if (!colorsRef.current || colorsRef.current.accent !== accent) {
       const computed = getComputedStyle(document.documentElement);
-      const played =
-        computed.getPropertyValue("--accent").trim() || "#82aaff";
-      const unplayed =
-        computed.getPropertyValue("--border-strong").trim() || "#2c3d63";
-      const progressX = ratio * width;
-      const count = data.length;
-      const slot = width / count;
-      const gap = Math.min(2, Math.max(0.6, slot * 0.34));
-      const barWidth = Math.max(0.7, slot - gap);
-      const middle = height / 2;
-      const hoverX = hoverRatio != null ? hoverRatio * width : null;
-      const previewStart = hoverX != null ? Math.min(progressX, hoverX) : 0;
-      const previewEnd = hoverX != null ? Math.max(progressX, hoverX) : 0;
+      colorsRef.current = {
+        accent,
+        played: computed.getPropertyValue("--accent").trim() || "#82aaff",
+        unplayed:
+          computed.getPropertyValue("--border-strong").trim() || "#2c3d63",
+      };
+    }
+    const { played, unplayed } = colorsRef.current;
+    const progressX = ratio * width;
+    const count = data.length;
+    const slot = width / count;
+    const gap = Math.min(2, Math.max(0.6, slot * 0.34));
+    const barWidth = Math.max(0.7, slot - gap);
+    const middle = height / 2;
+    const hoverX = hoverRatio != null ? hoverRatio * width : null;
+    const previewStart = hoverX != null ? Math.min(progressX, hoverX) : 0;
+    const previewEnd = hoverX != null ? Math.max(progressX, hoverX) : 0;
 
-      // The skip indication is drawn into the waveform itself: bars between
-      // the playhead and the hovered/scrubbed position use a softer accent,
-      // and the bar at the target is fully highlighted.
-      for (let i = 0; i < count; i += 1) {
-        const peak = Math.min(1, Math.max(0.03, data[i] ?? 0));
-        const barHeight = Math.max(2, peak * (height - 2));
-        const x = i * slot + gap / 2;
-        const center = x + barWidth / 2;
-        const isPlayed = center <= progressX;
+    // The skip indication is drawn into the waveform itself: bars between
+    // the playhead and the hovered/scrubbed position use a softer accent,
+    // and the bar at the target is fully highlighted.
+    for (let i = 0; i < count; i += 1) {
+      const peak = Math.min(1, Math.max(0.03, data[i] ?? 0));
+      const barHeight = Math.max(2, peak * (height - 2));
+      const x = i * slot + gap / 2;
+      const center = x + barWidth / 2;
+      const isPlayed = center <= progressX;
 
-        let fill = isPlayed ? played : unplayed;
-        let alpha = 1;
+      let fill = isPlayed ? played : unplayed;
+      let alpha = 1;
 
-        if (hoverX != null) {
-          const insidePreview =
-            Math.abs(hoverX - progressX) > 1 &&
-            center >= previewStart &&
-            center <= previewEnd;
-          if (insidePreview) {
-            fill = played;
-            alpha = 0.55;
-          }
-          if (Math.abs(center - hoverX) <= Math.max(barWidth / 2, 1.5)) {
-            fill = played;
-            alpha = 1;
-          }
+      if (hoverX != null) {
+        const insidePreview =
+          Math.abs(hoverX - progressX) > 1 &&
+          center >= previewStart &&
+          center <= previewEnd;
+        if (insidePreview) {
+          fill = played;
+          alpha = 0.55;
         }
-
-        context.globalAlpha = alpha;
-        context.fillStyle = fill;
-        context.fillRect(x, middle - barHeight / 2, barWidth, barHeight);
+        if (Math.abs(center - hoverX) <= Math.max(barWidth / 2, 1.5)) {
+          fill = played;
+          alpha = 1;
+        }
       }
-      context.globalAlpha = 1;
-    };
 
-    draw();
-    const observer = new ResizeObserver(() => draw());
+      context.globalAlpha = alpha;
+      context.fillStyle = fill;
+      context.fillRect(x, middle - barHeight / 2, barWidth, barHeight);
+    }
+    context.globalAlpha = 1;
+  };
+
+  // Keep the observer callback pointed at the latest draw closure.
+  useEffect(() => {
+    drawRef.current = draw;
+  });
+
+  // One observer for the component's lifetime; redraws reuse the latest draw.
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const observer = new ResizeObserver(() => drawRef.current());
     observer.observe(wrapper);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    drawRef.current();
   }, [data, ratio, hoverRatio, height, accent]);
 
   const valueFromClientX = (clientX: number) => {

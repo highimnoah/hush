@@ -429,6 +429,8 @@
   border-radius: var(--radius-sm);
   cursor: grab;
   transition: background var(--t);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
 }
 .queueItem:active {
   cursor: grabbing;
@@ -645,6 +647,8 @@
   line-height: 1.5;
   text-align: left;
   transition: color var(--t), background var(--t);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 37px;
 }
 .lyricLine:hover {
   color: var(--text);

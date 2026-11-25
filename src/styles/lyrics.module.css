@@ -96,6 +96,8 @@
   padding: 9px 15px;
   border-bottom: 1px solid var(--border);
   transition: background var(--t);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 58px;
 }
 
 .row:last-child {
