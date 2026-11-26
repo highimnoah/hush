@@ -220,9 +220,7 @@ pub fn run(
         muted,
         next: Arc::new(Mutex::new(None)),
         pending_advance: Arc::new(Mutex::new(None)),
-        gapless_enabled: Arc::new(AtomicBool::new(
-            transition_mode == TransitionMode::Gapless,
-        )),
+        gapless_enabled: Arc::new(AtomicBool::new(transition_mode == TransitionMode::Gapless)),
         prevent_advance: Arc::new(AtomicBool::new(false)),
         awaiting_advance: None,
         advance_deadline: Instant::now(),
@@ -390,8 +388,7 @@ impl Engine {
         self.mpris.set_metadata(&track);
 
         if !track.id.is_empty() {
-            self.waveforms
-                .playing_changed(Some(&track.id), duration);
+            self.waveforms.playing_changed(Some(&track.id), duration);
             self.waveforms
                 .analyze_current(track.id.clone(), url.clone(), duration);
         }
@@ -479,12 +476,8 @@ impl Engine {
             .property("mute", self.muted)
             .build()
             .map_err(|err| element_error("volume", err))?;
-        chain
-            .add(&fade)
-            .map_err(|e| e.to_string())?;
-        chain
-            .add(&volume)
-            .map_err(|e| e.to_string())?;
+        chain.add(&fade).map_err(|e| e.to_string())?;
+        chain.add(&volume).map_err(|e| e.to_string())?;
 
         let mut rg_el = None;
         if self.rg_mode != ReplayGainMode::Off {
@@ -532,9 +525,7 @@ impl Engine {
         let chain_sink = first
             .static_pad("sink")
             .ok_or_else(|| "audio chain has no sink pad".to_string())?;
-        tee_src
-            .link(&chain_sink)
-            .map_err(|e| e.to_string())?;
+        tee_src.link(&chain_sink).map_err(|e| e.to_string())?;
 
         // Playthrough probe branch (silent, unthrottled).
         let tap_convert = gst::ElementFactory::make("audioconvert")
@@ -569,9 +560,7 @@ impl Engine {
         let tap_convert_sink = tap_convert
             .static_pad("sink")
             .ok_or_else(|| "audioconvert has no sink pad".to_string())?;
-        tap_src
-            .link(&tap_convert_sink)
-            .map_err(|e| e.to_string())?;
+        tap_src.link(&tap_convert_sink).map_err(|e| e.to_string())?;
 
         let waveforms = self.waveforms.clone();
         if let Some(pad) = tap_filter.static_pad("src") {
@@ -593,12 +582,9 @@ impl Engine {
         let src_target = last
             .static_pad("src")
             .ok_or_else(|| "audio chain has no src pad".to_string())?;
-        let sink_ghost =
-            gst::GhostPad::with_target(&tee_sink).map_err(|e| e.to_string())?;
+        let sink_ghost = gst::GhostPad::with_target(&tee_sink).map_err(|e| e.to_string())?;
         let src_ghost = gst::GhostPad::with_target(&src_target).map_err(|e| e.to_string())?;
-        chain
-            .add_pad(&sink_ghost)
-            .map_err(|e| e.to_string())?;
+        chain.add_pad(&sink_ghost).map_err(|e| e.to_string())?;
         chain.add_pad(&src_ghost).map_err(|e| e.to_string())?;
         playbin.set_property("audio-filter", &chain);
 
@@ -615,10 +601,7 @@ impl Engine {
             {
                 return None;
             }
-            let pair = next_for_signal
-                .lock()
-                .ok()
-                .and_then(|guard| guard.clone());
+            let pair = next_for_signal.lock().ok().and_then(|guard| guard.clone());
             if let Some((url, track)) = pair {
                 playbin_for_signal.set_property("uri", url.as_str());
                 if let Ok(mut pending) = pending_for_signal.lock() {
@@ -1032,8 +1015,7 @@ impl Engine {
         });
 
         if !track.id.is_empty() {
-            self.waveforms
-                .playing_changed(Some(&track.id), duration);
+            self.waveforms.playing_changed(Some(&track.id), duration);
             self.waveforms
                 .analyze_current(track.id.clone(), url.clone(), duration);
         }
@@ -1152,10 +1134,7 @@ impl Engine {
                 gst::MessageView::StreamStart(_) => self.on_stream_start(),
                 gst::MessageView::Error(error) => {
                     let detail = error.error().to_string();
-                    let debug = error
-                        .debug()
-                        .map(|d| d.to_string())
-                        .unwrap_or_default();
+                    let debug = error.debug().map(|d| d.to_string()).unwrap_or_default();
                     let text = if debug.is_empty() {
                         detail
                     } else {
@@ -1227,12 +1206,16 @@ impl Engine {
 
     fn tick(&mut self) {
         // Gapless swap recorded by the streaming thread.
-        let pending = self.pending_advance.lock().ok().and_then(|mut guard| guard.take());
+        let pending = self
+            .pending_advance
+            .lock()
+            .ok()
+            .and_then(|mut guard| guard.take());
         if let Some((url, track)) = pending {
             let snapshot = self.snap();
             let remaining = (snapshot.duration - snapshot.position).max(0.0);
-            self.advance_deadline = Instant::now()
-                + Duration::from_secs_f64(remaining + ADVANCE_DEADLINE_MARGIN);
+            self.advance_deadline =
+                Instant::now() + Duration::from_secs_f64(remaining + ADVANCE_DEADLINE_MARGIN);
             self.awaiting_advance = Some((url, track));
             self.awaiting_wrap_hits = 0;
             log_line(&format!(
@@ -1258,9 +1241,7 @@ impl Engine {
             if let Some(seconds) = self.playback_position() {
                 if seconds.is_finite() {
                     let value = seconds.max(0.0);
-                    let plausible = settle_limit
-                        .map(|limit| value <= limit)
-                        .unwrap_or(true);
+                    let plausible = settle_limit.map(|limit| value <= limit).unwrap_or(true);
                     if plausible {
                         let clamped = if snapshot.duration > 0.0 {
                             value.clamp(0.0, snapshot.duration)
@@ -1361,7 +1342,10 @@ impl Engine {
         }
 
         // Fade mode: EOS arrived while (or before) the ramp finished.
-        if matches!(self.fade_ramp.map(|ramp| ramp.goal), Some(FadeGoal::Advance)) {
+        if matches!(
+            self.fade_ramp.map(|ramp| ramp.goal),
+            Some(FadeGoal::Advance)
+        ) {
             self.fade_ramp = None;
             log_line("boundary: eos during fade transition");
             if self.advance_via_rebuild() {
@@ -1613,9 +1597,7 @@ mod tests {
         }
         gst::Element::link_many([&convert, &resample, &filter, &probe_sink]).unwrap();
         let main_pad = tee.request_pad_simple("src_%u").unwrap();
-        main_pad
-            .link(&volume.static_pad("sink").unwrap())
-            .unwrap();
+        main_pad.link(&volume.static_pad("sink").unwrap()).unwrap();
         let probe_pad = tee.request_pad_simple("src_%u").unwrap();
         probe_pad
             .link(&convert.static_pad("sink").unwrap())

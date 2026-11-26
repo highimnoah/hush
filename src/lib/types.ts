@@ -215,7 +215,9 @@ export interface TrackInfo {
   id: string;
   title: string;
   artist?: string;
+  artistId?: string;
   album?: string;
+  albumId?: string;
   albumArtist?: string;
   coverArt?: string;
   coverUrl?: string;

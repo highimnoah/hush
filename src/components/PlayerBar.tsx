@@ -12,6 +12,7 @@ import {
   SkipForward,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   formatBitrate,
@@ -124,19 +125,35 @@ export function PlayerBar() {
             alt={track?.album ?? ""}
           />
         </button>
-        <button
-          type="button"
-          className={styles.metaBtn}
-          onClick={() => hasTrack && setNowPlayingOpen(true)}
-          disabled={!hasTrack}
-          aria-label="Open now playing"
-        >
-          <span className={styles.title}>
-            {track?.title ?? "Nothing playing"}
-          </span>
-          <span className={styles.artist}>
-            {track?.artist ?? "Pick something from your library"}
-          </span>
+        <div className={styles.meta}>
+          {track?.albumId ? (
+            <Link
+              to={`/albums/${track.albumId}`}
+              className={`${styles.title} ${styles.metaLink}`}
+              title={track.title}
+              onClick={() => queueOpen && setQueueOpen(false)}
+            >
+              {track.title}
+            </Link>
+          ) : (
+            <span className={styles.title}>
+              {track?.title ?? "Nothing playing"}
+            </span>
+          )}
+          {track?.artistId && track.artist ? (
+            <Link
+              to={`/artists/${track.artistId}`}
+              className={`${styles.artist} ${styles.metaLink}`}
+              title={track.artist}
+              onClick={() => queueOpen && setQueueOpen(false)}
+            >
+              {track.artist}
+            </Link>
+          ) : (
+            <span className={styles.artist}>
+              {track?.artist ?? "Pick something from your library"}
+            </span>
+          )}
           {(quality || rgLabel) && (
             <span className={styles.metaBadges}>
               {quality ? (
@@ -147,7 +164,7 @@ export function PlayerBar() {
               ) : null}
             </span>
           )}
-        </button>
+        </div>
       </div>
 
       <div className={styles.center}>

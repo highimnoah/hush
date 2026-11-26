@@ -355,12 +355,13 @@ impl WaveformHandle {
         if track_id.is_empty() || url.is_empty() {
             return;
         }
-        if self
-            .get(&track_id)
-            .map(|data| data.complete)
-            .unwrap_or(false)
-        {
-            return;
+        if let Some(data) = self.get(&track_id) {
+            if data.complete && !data.peaks.is_empty() {
+                // Already cached: emit it so every load path (including session
+                // resume) gets the waveform without a separate fetch.
+                self.emit(&track_id, &data);
+                return;
+            }
         }
         let Ok(mut items) = self.queue.items.lock() else {
             return;

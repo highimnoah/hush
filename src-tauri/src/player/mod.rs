@@ -6,10 +6,10 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
+use self::waveform::WaveformHandle;
 use crate::config::{ReplayGainMode, TransitionMode};
 use crate::discord::DiscordHandle;
 use crate::mpris::MprisHandle;
-use self::waveform::WaveformHandle;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -32,7 +32,11 @@ pub struct TrackInfo {
     #[serde(default)]
     pub artist: Option<String>,
     #[serde(default)]
+    pub artist_id: Option<String>,
+    #[serde(default)]
     pub album: Option<String>,
+    #[serde(default)]
+    pub album_id: Option<String>,
     #[serde(default)]
     pub album_artist: Option<String>,
     #[serde(default)]
@@ -180,5 +184,39 @@ impl PlayerHandle {
             });
 
         Self { tx, snapshot }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TrackInfo;
+
+    /// The player bar links to the album/artist pages, so the IDs must survive
+    /// the frontend → Rust → `hush://track` round trip.
+    #[test]
+    fn track_info_keeps_album_and_artist_ids() {
+        let json = r#"{
+            "id": "track",
+            "title": "Song",
+            "artist": "Artist",
+            "artistId": "artist-1",
+            "album": "Album",
+            "albumId": "album-1"
+        }"#;
+        let track: TrackInfo = serde_json::from_str(json).expect("track");
+        assert_eq!(track.artist_id.as_deref(), Some("artist-1"));
+        assert_eq!(track.album_id.as_deref(), Some("album-1"));
+
+        let encoded = serde_json::to_string(&track).expect("serialize");
+        assert!(encoded.contains("\"artistId\":\"artist-1\""));
+        assert!(encoded.contains("\"albumId\":\"album-1\""));
+    }
+
+    #[test]
+    fn track_info_ids_default_to_none() {
+        let track: TrackInfo =
+            serde_json::from_str(r#"{"id":"track","title":"Song"}"#).expect("track");
+        assert!(track.album_id.is_none());
+        assert!(track.artist_id.is_none());
     }
 }

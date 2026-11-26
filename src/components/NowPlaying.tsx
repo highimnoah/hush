@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   formatBitrate,
@@ -202,12 +203,36 @@ export function NowPlaying() {
 
           <div className={fullscreen.meta}>
             <div className={fullscreen.titleRow}>
-              <span className={fullscreen.title}>
-                {track?.title ?? "Nothing playing"}
-              </span>
+              {track?.albumId ? (
+                <Link
+                  to={`/albums/${track.albumId}`}
+                  className={`${fullscreen.title} ${fullscreen.metaLink}`}
+                  title={track.title}
+                  onClick={() => setOpen(false)}
+                >
+                  {track.title}
+                </Link>
+              ) : (
+                <span className={fullscreen.title}>
+                  {track?.title ?? "Nothing playing"}
+                </span>
+              )}
               {isExplicit(track) ? <ExplicitBadge /> : null}
             </div>
-            <div className={fullscreen.artist}>{track?.artist ?? "—"}</div>
+            <div className={fullscreen.artist}>
+              {track?.artistId && track.artist ? (
+                <Link
+                  to={`/artists/${track.artistId}`}
+                  className={fullscreen.metaLink}
+                  title={track.artist}
+                  onClick={() => setOpen(false)}
+                >
+                  {track.artist}
+                </Link>
+              ) : (
+                track?.artist ?? "—"
+              )}
+            </div>
             <div className={fullscreen.album}>
               {[track?.album, track?.albumArtist].filter(Boolean).join(" · ")}
             </div>

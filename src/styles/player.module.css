@@ -37,7 +37,7 @@
   height: 100%;
   color: var(--text-faint);
 }
-.metaBtn {
+.meta {
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -58,6 +58,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.metaLink {
+  cursor: pointer;
+  transition: color var(--t);
+}
+.metaLink:hover {
+  color: var(--accent);
 }
 .metaBadges {
   display: flex;
