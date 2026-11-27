@@ -8,8 +8,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
 use souvlaki::{
-    MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition,
-    PlatformConfig, SeekDirection,
+    MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig,
+    SeekDirection,
 };
 use tauri::{AppHandle, Manager};
 
@@ -171,7 +171,11 @@ fn handle_event(app: &AppHandle, event: MediaControlEvent) {
                 SeekDirection::Forward => 1.0,
                 SeekDirection::Backward => -1.0,
             };
-            events::emit(app, "seekBy", Some((amount.as_secs_f64() * sign).to_string()));
+            events::emit(
+                app,
+                "seekBy",
+                Some((amount.as_secs_f64() * sign).to_string()),
+            );
         }
         MediaControlEvent::SetPosition(MediaPosition(position)) => {
             events::emit(app, "seekTo", Some(position.as_secs_f64().to_string()));

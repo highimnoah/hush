@@ -146,37 +146,6 @@
   font-family: ui-monospace, "SFMono-Regular", monospace;
   font-size: 11px;
 }
-.accentGrid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.accent {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 14px 8px 10px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  background: var(--bg-deep);
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 550;
-  transition: border-color var(--t), color var(--t);
-}
-.accent:hover {
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-.accentActive {
-  border-color: var(--accent);
-  color: var(--text);
-}
-.accentDot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-}
 .replaygainRow {
   display: flex;
   align-items: center;

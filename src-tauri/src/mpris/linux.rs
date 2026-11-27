@@ -48,7 +48,9 @@ impl MprisHandle {
     }
 
     pub fn set_metadata(&self, track: &TrackInfo) {
-        let _ = self.tx.send(MprisCommand::Metadata(Box::new(track.clone())));
+        let _ = self
+            .tx
+            .send(MprisCommand::Metadata(Box::new(track.clone())));
     }
 
     pub fn clear_metadata(&self) {

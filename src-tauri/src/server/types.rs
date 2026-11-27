@@ -5,9 +5,7 @@ use serde_json::Value;
 /// numbers as either JSON numbers or strings.
 fn json_to_u64(v: &Value) -> Option<u64> {
     match v {
-        Value::Number(n) => n
-            .as_u64()
-            .or_else(|| n.as_f64().map(|f| f.max(0.0) as u64)),
+        Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f.max(0.0) as u64)),
         Value::String(s) => s
             .trim()
             .parse::<u64>()

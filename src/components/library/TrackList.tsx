@@ -1,6 +1,12 @@
 import { Heart, MoreHorizontal, Play } from "lucide-react";
-import { useState } from "react";
-import type { DragEvent, MouseEvent } from "react";
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+} from "react";
 
 import { formatTime, isExplicit } from "../../lib/format";
 import type { Song } from "../../lib/types";
@@ -27,13 +33,12 @@ function Equalizer({ playing }: { playing: boolean }) {
 interface TrackRowProps {
   song: Song;
   index: number;
-  active: boolean;
-  playing: boolean;
   showArtwork: boolean;
   showAlbum: boolean;
   columns: string;
   draggable: boolean;
   dragOver: boolean;
+  animate: boolean;
   onPlay: () => void;
   onMore: (x: number, y: number) => void;
   onDragStart: () => void;
@@ -42,16 +47,15 @@ interface TrackRowProps {
   onDragEnd: () => void;
 }
 
-function TrackRow({
+const TrackRow = memo(function TrackRow({
   song,
   index,
-  active,
-  playing,
   showArtwork,
   showAlbum,
   columns,
   draggable,
   dragOver,
+  animate,
   onPlay,
   onMore,
   onDragStart,
@@ -59,6 +63,10 @@ function TrackRow({
   onDrop,
   onDragEnd,
 }: TrackRowProps) {
+  const active = usePlayer((state) => state.track?.id === song.id);
+  const playing = usePlayer(
+    (state) => state.track?.id === song.id && state.status === "playing",
+  );
   const starred = useLibrary((state) =>
     state.isStarred("song", song.id, song.starred),
   );
@@ -68,7 +76,10 @@ function TrackRow({
     <div
       className={`${styles.row} ${columns} ${active ? styles.rowActive : ""} ${
         dragOver ? styles.rowDragOver : ""
-      }`}
+      } ${animate ? styles.rowAnimated : ""}`}
+      style={
+        animate ? { animationDelay: `${Math.min(index * 18, 360)}ms` } : undefined
+      }
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -165,6 +176,53 @@ function TrackRow({
       </button>
     </div>
   );
+});
+
+const VIRTUAL_ROW_HEIGHT = 58;
+const VIRTUAL_OVERSCAN = 8;
+
+function useVirtualRange(itemCount: number) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [range, setRange] = useState({ start: 0, end: itemCount - 1 });
+
+  useEffect(() => {
+    const main = document.querySelector("[data-main]");
+    if (!main) return;
+
+    const compute = () => {
+      const body = bodyRef.current;
+      if (!body) return;
+      const mainEl = main as HTMLElement;
+      const scrollTop = mainEl.scrollTop;
+      const bodyTop = body.offsetTop;
+      const visibleTop = scrollTop - bodyTop;
+      const visibleHeight = mainEl.clientHeight;
+      const start = Math.max(
+        0,
+        Math.floor(visibleTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN,
+      );
+      const end = Math.min(
+        itemCount - 1,
+        Math.ceil((visibleTop + visibleHeight) / VIRTUAL_ROW_HEIGHT) +
+          VIRTUAL_OVERSCAN,
+      );
+      setRange((current) =>
+        current.start === start && current.end === end
+          ? current
+          : { start, end },
+      );
+    };
+
+    compute();
+    main.addEventListener("scroll", compute, { passive: true });
+    window.addEventListener("resize", compute);
+    return () => {
+      main.removeEventListener("scroll", compute);
+      window.removeEventListener("resize", compute);
+    };
+  }, [itemCount]);
+
+  return { bodyRef, range };
 }
 
 interface TrackListProps {
@@ -174,6 +232,10 @@ interface TrackListProps {
   showHeader?: boolean;
   startNumber?: number;
   className?: string;
+  /** Animate rows in with a top-to-bottom stagger. */
+  animate?: boolean;
+  /** Render only the visible slice of a long list. Disabled for drag/drop. */
+  virtualize?: boolean;
   /** When provided, rows become draggable and reorderable. */
   onMove?: (from: number, to: number) => void;
   /** Override the context-menu handler (defaults to the global song menu). */
@@ -187,11 +249,11 @@ export function TrackList({
   showHeader = true,
   startNumber = 1,
   className = "",
+  animate = false,
+  virtualize = false,
   onMove,
   onMore,
 }: TrackListProps) {
-  const currentId = usePlayer((state) => state.track?.id);
-  const status = usePlayer((state) => state.status);
   const playSongs = usePlayer((state) => state.playSongs);
   const openMenu = useContextMenu((state) => state.open);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -214,53 +276,76 @@ export function TrackList({
           ? styles.columnsNoAlbum
           : styles.columnsFull;
 
+  const enableVirtual = virtualize && !onMove && songs.length > 40;
+  const { bodyRef, range } = useVirtualRange(
+    enableVirtual ? songs.length : 0,
+  );
+
+  const renderRow = (song: Song, index: number) => {
+    const absoluteIndex = startNumber + index;
+    return (
+      <TrackRow
+        key={`${song.id}-${index}`}
+        song={song}
+        index={absoluteIndex}
+        showArtwork={showArtwork}
+        showAlbum={showAlbum}
+        columns={columns}
+        draggable={Boolean(onMove)}
+        dragOver={overIndex === index && dragIndex !== index}
+        animate={animate}
+        onPlay={() => playSongs(songs, index)}
+        onMore={(x, y) =>
+          onMore ? onMore(song, x, y, index) : openMenu(song, x, y)
+        }
+        onDragStart={() => setDragIndex(index)}
+        onDragOver={(event) => {
+          if (!onMove) return;
+          event.preventDefault();
+          setOverIndex(index);
+        }}
+        onDrop={() => handleDrop(index)}
+        onDragEnd={() => {
+          setDragIndex(null);
+          setOverIndex(null);
+        }}
+      />
+    );
+  };
+
+  const header = showHeader ? (
+    <div className={`${styles.trackHeader} ${columns}`}>
+      <div className={styles.colIndex}>#</div>
+      {showArtwork ? <div /> : null}
+      <div>Title</div>
+      {showAlbum ? <div>Album</div> : null}
+      <div />
+      <div className={styles.colDuration}>Time</div>
+      <div />
+    </div>
+  ) : null;
+
   return (
     <div className={`${styles.trackList} ${className}`}>
-      {showHeader ? (
-        <div className={`${styles.trackHeader} ${columns}`}>
-          <div className={styles.colIndex}>#</div>
-          {showArtwork ? <div /> : null}
-          <div>Title</div>
-          {showAlbum ? <div>Album</div> : null}
-          <div />
-          <div className={styles.colDuration}>Time</div>
-          <div />
+      {header}
+      {enableVirtual ? (
+        <div
+          ref={bodyRef}
+          className={styles.virtualBody}
+          style={{ height: songs.length * VIRTUAL_ROW_HEIGHT }}
+        >
+          <div
+            className={styles.virtualInner}
+            style={{ top: range.start * VIRTUAL_ROW_HEIGHT }}
+          >
+            {songs.slice(range.start, range.end + 1).map((song, offset) =>
+              renderRow(song, range.start + offset),
+            )}
+          </div>
         </div>
-      ) : null}
-
-      {songs.map((song, index) => {
-        const active = currentId === song.id;
-        const playing = active && status === "playing";
-        return (
-          <TrackRow
-            key={`${song.id}-${index}`}
-            song={song}
-            index={startNumber + index}
-            active={active}
-            playing={playing}
-            showArtwork={showArtwork}
-            showAlbum={showAlbum}
-            columns={columns}
-            draggable={Boolean(onMove)}
-            dragOver={overIndex === index && dragIndex !== index}
-            onPlay={() => playSongs(songs, index)}
-            onMore={(x, y) =>
-              onMore ? onMore(song, x, y, index) : openMenu(song, x, y)
-            }
-            onDragStart={() => setDragIndex(index)}
-            onDragOver={(event) => {
-              if (!onMove) return;
-              event.preventDefault();
-              setOverIndex(index);
-            }}
-            onDrop={() => handleDrop(index)}
-            onDragEnd={() => {
-              setDragIndex(null);
-              setOverIndex(null);
-            }}
-          />
-        );
-      })}
+      ) : (
+        songs.map((song, index) => renderRow(song, index))
+      )}
     </div>
   );
 }

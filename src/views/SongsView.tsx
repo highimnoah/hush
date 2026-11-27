@@ -9,6 +9,7 @@ import { NotConfigured } from "../components/ui/NotConfigured";
 import { ViewSearchBar } from "../components/ui/ViewSearchBar";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
+import { dataCache } from "../lib/cache";
 import type { Song } from "../lib/types";
 import { useDebounced } from "../lib/useAsync";
 import { usePlayer } from "../store/player";
@@ -46,10 +47,19 @@ export function SongsView() {
     setSongs([]);
     setDone(false);
 
+    const cacheKey = `songs:page:${term}:0`;
+    const cached = dataCache.get<Song[]>(cacheKey);
+    if (cached) {
+      setSongs(cached);
+      setDone(cached.length < PAGE_SIZE);
+      setLoading(false);
+    }
+
     api
       .getSongsPage(term, PAGE_SIZE, 0)
       .then((page) => {
         if (cancelled) return;
+        dataCache.set(cacheKey, page);
         setSongs(page);
         setDone(page.length < PAGE_SIZE);
       })
@@ -130,7 +140,7 @@ export function SongsView() {
         <Loading label="Loading songs…" />
       ) : songs.length ? (
         <>
-          <TrackList songs={songs} showAlbum showArtwork />
+          <TrackList songs={songs} showAlbum showArtwork virtualize />
           {!done ? (
             <div className={styles.loadMore}>
               <button

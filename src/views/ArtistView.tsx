@@ -10,7 +10,7 @@ import { CardSkeletonGrid } from "../components/ui/States";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import type { ArtistDetail } from "../lib/types";
-import { useAsync } from "../lib/useAsync";
+import { useCachedAsync } from "../lib/useAsync";
 import styles from "../styles/library.module.css";
 
 function ArtistBody({ detail }: { detail: ArtistDetail }) {
@@ -38,8 +38,16 @@ function ArtistBody({ detail }: { detail: ArtistDetail }) {
 
       {albums.length ? (
         <div className={`${styles.grid} ${styles.gridWide}`}>
-          {albums.map((album) => (
-            <AlbumCard key={album.id} album={album} />
+          {albums.map((album, index) => (
+            <div
+              key={album.id}
+              className={styles.gridItem}
+              style={{
+                animationDelay: `${Math.min(index * 25, 420)}ms`,
+              }}
+            >
+              <AlbumCard album={album} />
+            </div>
           ))}
         </div>
       ) : (
@@ -53,7 +61,8 @@ export function ArtistView() {
   const { id } = useParams<{ id: string }>();
   const configured = useConfigured();
 
-  const state = useAsync<ArtistDetail | null>(
+  const state = useCachedAsync<ArtistDetail | null>(
+    configured && id ? `artist:detail:${id}` : null,
     () =>
       configured && id ? api.getArtist(id) : Promise.resolve(null),
     [id, configured],

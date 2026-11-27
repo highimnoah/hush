@@ -20,6 +20,7 @@ import {
   formatSampleRate,
   formatTime,
 } from "../lib/format";
+import type { TrackInfo } from "../lib/types";
 import { usePlayer } from "../store/player";
 import styles from "../styles/player.module.css";
 import ui from "../styles/ui.module.css";
@@ -32,8 +33,6 @@ const SLEEP_MINUTES = [15, 30, 45, 60, 90];
 export function PlayerBar() {
   const track = usePlayer((state) => state.track);
   const status = usePlayer((state) => state.status);
-  const position = usePlayer((state) => state.position);
-  const duration = usePlayer((state) => state.duration);
   const shuffle = usePlayer((state) => state.shuffle);
   const repeat = usePlayer((state) => state.repeat);
   const replaygain = usePlayer((state) => state.replaygain);
@@ -41,7 +40,6 @@ export function PlayerBar() {
   const toggle = usePlayer((state) => state.toggle);
   const next = usePlayer((state) => state.next);
   const prev = usePlayer((state) => state.prev);
-  const seek = usePlayer((state) => state.seek);
   const setShuffle = usePlayer((state) => state.setShuffle);
   const cycleRepeat = usePlayer((state) => state.cycleRepeat);
   const nowPlayingOpen = usePlayer((state) => state.nowPlayingOpen);
@@ -56,7 +54,6 @@ export function PlayerBar() {
   const setSleepTimer = usePlayer((state) => state.setSleepTimer);
   const setSleepMode = usePlayer((state) => state.setSleepMode);
 
-  const [preview, setPreview] = useState<number | null>(null);
   const [sleepOpen, setSleepOpen] = useState(false);
   const sleepRef = useRef<HTMLDivElement>(null);
 
@@ -98,8 +95,6 @@ export function PlayerBar() {
 
   const playing = status === "playing";
   const hasTrack = Boolean(track);
-  const elapsed = preview ?? position;
-  const total = duration || track?.duration || 0;
 
   const rgLabel =
     replaygain === "off"
@@ -231,23 +226,7 @@ export function PlayerBar() {
           </button>
         </div>
 
-        <div className={styles.progressRow}>
-          <span className={styles.time}>{formatTime(elapsed)}</span>
-          <WaveformSeek
-            className={styles.seek}
-            value={elapsed}
-            max={total}
-            height={36}
-            disabled={!hasTrack || total <= 0}
-            ariaLabel="Seek"
-            onPreview={(value) => setPreview(value)}
-            onCommit={(value) => {
-              setPreview(null);
-              seek(value);
-            }}
-          />
-          <span className={styles.time}>{formatTime(total)}</span>
-        </div>
+        <PlayerProgress track={track} hasTrack={hasTrack} />
       </div>
 
       <div className={styles.right}>
@@ -368,5 +347,43 @@ export function PlayerBar() {
         </button>
       </div>
     </footer>
+  );
+}
+
+/** Progress row isolated from the rest of the player bar so position/duration
+ * ticks only re-render this small subtree (~5×/s), not the whole bar. */
+function PlayerProgress({
+  track,
+  hasTrack,
+}: {
+  track: TrackInfo | null;
+  hasTrack: boolean;
+}) {
+  const position = usePlayer((state) => state.position);
+  const duration = usePlayer((state) => state.duration);
+  const seek = usePlayer((state) => state.seek);
+  const [preview, setPreview] = useState<number | null>(null);
+
+  const elapsed = preview ?? position;
+  const total = duration || track?.duration || 0;
+
+  return (
+    <div className={styles.progressRow}>
+      <span className={styles.time}>{formatTime(elapsed)}</span>
+      <WaveformSeek
+        className={styles.seek}
+        value={elapsed}
+        max={total}
+        height={36}
+        disabled={!hasTrack || total <= 0}
+        ariaLabel="Seek"
+        onPreview={(value) => setPreview(value)}
+        onCommit={(value) => {
+          setPreview(null);
+          seek(value);
+        }}
+      />
+      <span className={styles.time}>{formatTime(total)}</span>
+    </div>
   );
 }

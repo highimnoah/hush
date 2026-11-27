@@ -21,7 +21,7 @@ import {
   formatTime,
   isExplicit,
 } from "../lib/format";
-import type { FullscreenPanel, Settings } from "../lib/types";
+import type { FullscreenPanel, Settings, TrackInfo } from "../lib/types";
 import { usePlayer } from "../store/player";
 import { useSettings } from "../store/settings";
 import fullscreen from "../styles/fullscreen.module.css";
@@ -45,8 +45,6 @@ export function NowPlaying() {
 
   const track = usePlayer((state) => state.track);
   const status = usePlayer((state) => state.status);
-  const position = usePlayer((state) => state.position);
-  const duration = usePlayer((state) => state.duration);
   const shuffle = usePlayer((state) => state.shuffle);
   const repeat = usePlayer((state) => state.repeat);
   const replaygain = usePlayer((state) => state.replaygain);
@@ -57,7 +55,6 @@ export function NowPlaying() {
   const toggle = usePlayer((state) => state.toggle);
   const next = usePlayer((state) => state.next);
   const prev = usePlayer((state) => state.prev);
-  const seek = usePlayer((state) => state.seek);
   const setShuffle = usePlayer((state) => state.setShuffle);
   const cycleRepeat = usePlayer((state) => state.cycleRepeat);
   const playIndex = usePlayer((state) => state.playIndex);
@@ -65,7 +62,6 @@ export function NowPlaying() {
   const settings = useSettings((state) => state.settings);
   const patchSettings = useSettings((state) => state.patch);
 
-  const [preview, setPreview] = useState<number | null>(null);
 
   const sidebarOpen = settings?.fullscreenSidebarOpen ?? true;
   const panel = settings?.fullscreenSidebarPanel ?? "queue";
@@ -149,8 +145,6 @@ export function NowPlaying() {
 
   const playing = status === "playing";
   const hasTrack = Boolean(track);
-  const elapsed = preview ?? position;
-  const total = duration || track?.duration || 0;
   return (
     <section className={fullscreen.overlay} aria-label="Now playing">
       <div className={fullscreen.top} data-tauri-drag-region>
@@ -300,23 +294,7 @@ export function NowPlaying() {
               </button>
             </div>
 
-            <div className={fullscreen.progressRow}>
-              <span className={fullscreen.time}>{formatTime(elapsed)}</span>
-              <WaveformSeek
-                className={fullscreen.seek}
-                value={elapsed}
-                max={total}
-                height={56}
-                disabled={!hasTrack || total <= 0}
-                ariaLabel="Seek"
-                onPreview={(value) => setPreview(value)}
-                onCommit={(value) => {
-                  setPreview(null);
-                  seek(value);
-                }}
-              />
-              <span className={fullscreen.time}>{formatTime(total)}</span>
-            </div>
+            <FullscreenProgress track={track} hasTrack={hasTrack} />
 
             <div className={fullscreen.volumeRow}>
               <VolumeControl
@@ -442,5 +420,43 @@ export function NowPlaying() {
         ) : null}
       </div>
     </section>
+  );
+}
+
+/** Isolated progress/timeline section so position ticks don't re-render the
+ * entire fullscreen overlay (lyrics panel, queue, info grid) every ~200ms. */
+function FullscreenProgress({
+  track,
+  hasTrack,
+}: {
+  track: TrackInfo | null;
+  hasTrack: boolean;
+}) {
+  const position = usePlayer((state) => state.position);
+  const duration = usePlayer((state) => state.duration);
+  const seek = usePlayer((state) => state.seek);
+  const [preview, setPreview] = useState<number | null>(null);
+
+  const elapsed = preview ?? position;
+  const total = duration || track?.duration || 0;
+
+  return (
+    <div className={fullscreen.progressRow}>
+      <span className={fullscreen.time}>{formatTime(elapsed)}</span>
+      <WaveformSeek
+        className={fullscreen.seek}
+        value={elapsed}
+        max={total}
+        height={56}
+        disabled={!hasTrack || total <= 0}
+        ariaLabel="Seek"
+        onPreview={(value) => setPreview(value)}
+        onCommit={(value) => {
+          setPreview(null);
+          seek(value);
+        }}
+      />
+      <span className={fullscreen.time}>{formatTime(total)}</span>
+    </div>
   );
 }

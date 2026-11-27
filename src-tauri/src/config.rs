@@ -82,7 +82,6 @@ pub struct Settings {
     pub discord_use_cover: bool,
 
     // --- appearance / misc ---
-    pub accent: String,
     /// Whether the fullscreen sidebar was visible last time.
     pub fullscreen_sidebar_open: bool,
     /// Last active fullscreen sidebar tab: "queue", "lyrics" or "info".
@@ -131,7 +130,6 @@ impl Default for Settings {
             discord_timestamps: true,
             discord_use_cover: true,
 
-            accent: "blue".into(),
             fullscreen_sidebar_open: true,
             fullscreen_sidebar_panel: "queue".into(),
             artist_images: ArtistImageMode::Auto,

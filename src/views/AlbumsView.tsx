@@ -8,7 +8,7 @@ import { ViewSearchBar } from "../components/ui/ViewSearchBar";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import type { Album } from "../lib/types";
-import { useAsync, useDebounced } from "../lib/useAsync";
+import { useCachedAsync, useDebounced } from "../lib/useAsync";
 import styles from "../styles/library.module.css";
 import ui from "../styles/ui.module.css";
 import { NotConfigured } from "../components/ui/NotConfigured";
@@ -29,7 +29,14 @@ export function AlbumsView() {
   const debounced = useDebounced(query, 300);
   const term = debounced.trim();
 
-  const state = useAsync<Album[]>(
+  const cacheKey = configured
+    ? term
+      ? `albums:search:${term}`
+      : `albums:list:${sort}`
+    : null;
+
+  const state = useCachedAsync<Album[]>(
+    cacheKey,
     () => {
       if (!configured) return Promise.resolve([]);
       if (term) return api.searchAlbums(term, 120);
@@ -79,8 +86,16 @@ export function AlbumsView() {
         {(albums) =>
           albums.length ? (
             <div className={`${styles.grid} ${styles.gridWide}`}>
-              {albums.map((album) => (
-                <AlbumCard key={album.id} album={album} />
+              {albums.map((album, index) => (
+                <div
+                  key={album.id}
+                  className={styles.gridItem}
+                  style={{
+                    animationDelay: `${Math.min(index * 25, 420)}ms`,
+                  }}
+                >
+                  <AlbumCard album={album} />
+                </div>
               ))}
             </div>
           ) : term ? (

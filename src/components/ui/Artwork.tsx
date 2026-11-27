@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Music2 } from "lucide-react";
 
+import { coverCacheKey, dataCache } from "../../lib/cache";
 import { api } from "../../lib/ipc";
 import styles from "./Artwork.module.css";
 
@@ -42,10 +43,20 @@ export function Artwork({
       return;
     }
 
+    const cacheKey = coverCacheKey(coverId, size);
+    const cached = dataCache.get<string>(cacheKey);
+    if (cached) {
+      setResolved(cached);
+      return;
+    }
+
     api
       .getCoverArtUrl(coverId, size)
       .then((url) => {
-        if (!cancelled) setResolved(url);
+        if (!cancelled) {
+          dataCache.set(cacheKey, url);
+          setResolved(url);
+        }
       })
       .catch(() => {
         if (!cancelled) setFailed(true);

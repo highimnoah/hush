@@ -30,7 +30,9 @@ pub fn update_settings(state: State<'_, AppState>, settings: Settings) -> Result
         let _ = state.session_store.clear();
     }
     state.player.send(Command::SetReplayGain(saved.replaygain));
-    state.player.send(Command::SetPreamp(saved.replaygain_preamp));
+    state
+        .player
+        .send(Command::SetPreamp(saved.replaygain_preamp));
     state.player.send(Command::SetTransition(
         saved.transition_mode,
         saved.fade_seconds as f64,
@@ -40,10 +42,7 @@ pub fn update_settings(state: State<'_, AppState>, settings: Settings) -> Result
 }
 
 #[tauri::command]
-pub async fn test_connection(
-    state: State<'_, AppState>,
-    settings: Settings,
-) -> Result<ServerInfo> {
+pub async fn test_connection(state: State<'_, AppState>, settings: Settings) -> Result<ServerInfo> {
     let http = state.http.clone();
     let client = server::build(&settings, http)?;
     let mut info = client.ping().await?;
@@ -144,10 +143,7 @@ pub async fn get_starred(state: State<'_, AppState>) -> Result<SearchResults> {
 }
 
 #[tauri::command]
-pub async fn get_random_songs(
-    state: State<'_, AppState>,
-    size: Option<u32>,
-) -> Result<Vec<Song>> {
+pub async fn get_random_songs(state: State<'_, AppState>, size: Option<u32>) -> Result<Vec<Song>> {
     build_server(&state)?.random_songs(size.unwrap_or(50)).await
 }
 
@@ -370,11 +366,7 @@ pub fn get_cover_art_url(
 }
 
 #[tauri::command]
-pub async fn scrobble(
-    state: State<'_, AppState>,
-    id: String,
-    submission: bool,
-) -> Result<()> {
+pub async fn scrobble(state: State<'_, AppState>, id: String, submission: bool) -> Result<()> {
     build_server(&state)?.scrobble(&id, submission).await
 }
 
@@ -607,22 +599,18 @@ pub fn toggle_mini_player(app: AppHandle, open: bool) -> Result<()> {
             return Ok(());
         }
 
-        let window = WebviewWindowBuilder::new(
-            &app,
-            "mini",
-            WebviewUrl::App("index.html".into()),
-        )
-        .title("hush")
-        .inner_size(380.0, 140.0)
-        .min_inner_size(340.0, 124.0)
-        .decorations(false)
-        .resizable(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(true)
-        .initialization_script("window.__HUSH_MINI__ = true;")
-        .build()
-        .map_err(|err| HushError::Other(format!("Could not open mini player: {err}")))?;
+        let window = WebviewWindowBuilder::new(&app, "mini", WebviewUrl::App("index.html".into()))
+            .title("hush")
+            .inner_size(380.0, 140.0)
+            .min_inner_size(340.0, 124.0)
+            .decorations(false)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible(true)
+            .initialization_script("window.__HUSH_MINI__ = true;")
+            .build()
+            .map_err(|err| HushError::Other(format!("Could not open mini player: {err}")))?;
 
         let _ = window.set_focus();
     } else if let Some(window) = app.get_webview_window("mini") {

@@ -4,7 +4,6 @@ import {
   Disc3,
   Handshake,
   Info,
-  Palette,
   Radio,
   RefreshCw,
   Server,
@@ -16,6 +15,7 @@ import { Slider } from "../components/ui/Slider";
 import { ErrorState } from "../components/ui/ErrorState";
 import { Loading } from "../components/ui/States";
 import { Switch } from "../components/ui/Switch";
+import { dataCache } from "../lib/cache";
 import { formatBytes } from "../lib/format";
 import { api } from "../lib/ipc";
 import { notifyLyricsChanged } from "../lib/lyrics";
@@ -26,7 +26,6 @@ import type {
   Settings,
   TransitionMode,
 } from "../lib/types";
-import { ACCENTS } from "../lib/types";
 import { useSettings } from "../store/settings";
 import { useUpdater } from "../store/updater";
 import styles from "../styles/settings.module.css";
@@ -96,19 +95,6 @@ export function SettingsView() {
   }, [settings, form]);
 
   useEffect(() => {
-    if (form?.accent) {
-      document.documentElement.dataset.accent = form.accent;
-    }
-  }, [form?.accent]);
-
-  useEffect(() => {
-    return () => {
-      const saved = useSettings.getState().settings?.accent ?? "blue";
-      document.documentElement.dataset.accent = saved;
-    };
-  }, []);
-
-  useEffect(() => {
     void loadVersion();
   }, [loadVersion]);
 
@@ -160,10 +146,20 @@ export function SettingsView() {
     const providerChanged = Boolean(
       form && settings && form.lrclibLyrics !== settings.lrclibLyrics,
     );
+    const serverChanged = Boolean(
+      form &&
+        settings &&
+        (form.serverUrl.trim() !== settings.serverUrl.trim() ||
+          form.username.trim() !== settings.username.trim() ||
+          form.token !== settings.token ||
+          form.salt !== settings.salt ||
+          form.password !== settings.password),
+    );
     try {
       const saved = await saveSettings(normalized());
       setForm({ ...saved });
       if (providerChanged) notifyLyricsChanged();
+      if (serverChanged) dataCache.clear();
       setSaveMessage("Saved");
       window.setTimeout(() => setSaveMessage(null), 2500);
     } catch (err) {
@@ -743,38 +739,6 @@ export function SettingsView() {
           Run <code>hush-sync</code> (see <code>hush-sync/README.md</code>) and
           use <code>wss://</code> behind TLS for remote friends.
         </p>
-      </section>
-
-      {/* Appearance */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <Palette size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>Appearance</div>
-            <div className={styles.cardDesc}>
-              A flat accent colour drawn from the midnight palette.
-            </div>
-          </div>
-        </div>
-        <div className={styles.accentGrid}>
-          {Object.entries(ACCENTS).map(([key, accent]) => (
-            <button
-              key={key}
-              type="button"
-              className={`${styles.accent} ${form.accent === key ? styles.accentActive : ""}`}
-              onClick={() => update({ accent: key })}
-              aria-pressed={form.accent === key}
-            >
-              <span
-                className={styles.accentDot}
-                style={{ background: accent.color }}
-              />
-              {accent.label}
-            </button>
-          ))}
-        </div>
       </section>
 
       {/* Artist images */}

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { dataCache } from "./cache";
+
 export interface AsyncState<T> {
   data: T | null;
   loading: boolean;
@@ -46,6 +48,65 @@ export function useAsync<T>(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, nonce]);
+
+  const reload = useCallback(() => setNonce((value) => value + 1), []);
+
+  return { data, loading, error, reload };
+}
+
+/**
+ * Like `useAsync`, but backed by `dataCache`. The cached value is returned
+ * immediately on mount, then refreshed in the background. This gives route
+ * views a "stale-while-revalidate" feel: going back to a previously loaded
+ * screen shows content instantly instead of a skeleton.
+ */
+export function useCachedAsync<T>(
+  key: string | null,
+  factory: () => Promise<T>,
+  deps: unknown[],
+): AsyncState<T> {
+  const cached = key ? dataCache.get<T>(key) : null;
+  const [data, setData] = useState<T | null>(cached ?? null);
+  const [loading, setLoading] = useState(!cached);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  const factoryRef = useRef(factory);
+  factoryRef.current = factory;
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+
+    if (!key) {
+      setLoading(false);
+      return;
+    }
+
+    const stale = dataCache.get<T>(key);
+    setLoading(!stale);
+
+    factoryRef
+      .current()
+      .then((result) => {
+        if (cancelled) return;
+        dataCache.set(key, result);
+        setData(result);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setLoading(false);
+        // Keep stale data visible if a background refresh fails.
+        if (stale && !data) setData(stale);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, ...deps, nonce]);
 
   const reload = useCallback(() => setNonce((value) => value + 1), []);
 

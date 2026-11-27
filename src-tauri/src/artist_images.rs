@@ -241,12 +241,7 @@ impl ArtistImageStore {
         None
     }
 
-    async fn store_image(
-        &self,
-        key: &str,
-        source: &str,
-        url: &str,
-    ) -> Option<ArtistImageInfo> {
+    async fn store_image(&self, key: &str, source: &str, url: &str) -> Option<ArtistImageInfo> {
         let (bytes, ext) = download_image(&self.http, url).await?;
         let file = format!("{}.{}", fnv_hex(key), ext);
         std::fs::write(self.dir.join(&file), bytes).ok()?;
@@ -292,7 +287,10 @@ impl ArtistImageStore {
 }
 
 fn normalize(name: &str) -> String {
-    name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 fn names_match(query: &str, candidate: &str) -> bool {
@@ -360,7 +358,10 @@ async fn deezer_lookup(http: &reqwest::Client, name: &str) -> Option<String> {
     let value: serde_json::Value = response.json().await.ok()?;
     let items = value.get("data")?.as_array()?;
     for item in items {
-        let candidate = item.get("name").and_then(|value| value.as_str()).unwrap_or("");
+        let candidate = item
+            .get("name")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         if !names_match(name, candidate) {
             continue;
         }
@@ -412,12 +413,7 @@ async fn itunes_lookup(http: &reqwest::Client, name: &str) -> Option<String> {
 }
 
 async fn download_image(http: &reqwest::Client, url: &str) -> Option<(Vec<u8>, String)> {
-    let response = http
-        .get(url)
-        .timeout(DOWNLOAD_TIMEOUT)
-        .send()
-        .await
-        .ok()?;
+    let response = http.get(url).timeout(DOWNLOAD_TIMEOUT).send().await.ok()?;
     if !response.status().is_success() {
         return None;
     }

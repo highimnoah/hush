@@ -3,7 +3,6 @@
   padding: 32px 38px 52px;
   max-width: 1560px;
   margin: 0 auto;
-  animation: hush-fade-in 220ms ease;
 }
 .pageHead {
   display: flex;
@@ -29,6 +28,14 @@
 
 .section {
   margin-bottom: 40px;
+}
+.recs {
+  margin-top: 50px;
+  padding-top: 40px;
+  border-top: 1px solid var(--border);
+}
+.recs .section {
+  margin-bottom: 44px;
 }
 .sectionHead {
   display: flex;
@@ -61,6 +68,10 @@
 }
 .artistGrid {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.gridItem {
+  animation: hush-card-in 320ms ease-out both;
 }
 
 .card {
@@ -164,6 +175,15 @@
 .trackList {
   width: 100%;
 }
+.virtualBody {
+  position: relative;
+  width: 100%;
+}
+.virtualInner {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
 .trackHeader {
   display: grid;
   align-items: center;
@@ -195,6 +215,9 @@
 }
 .row:hover {
   background: var(--surface-2);
+}
+.rowAnimated {
+  animation: hush-row-in 260ms ease-out both;
 }
 .rowActive .title {
   color: var(--accent);

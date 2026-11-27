@@ -1,14 +1,22 @@
+import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 
 import type { Artist } from "../../lib/types";
 import styles from "../../styles/library.module.css";
 import { ArtistAvatar } from "../ui/ArtistAvatar";
 
-export function ArtistCard({ artist }: { artist: Artist }) {
+export function ArtistCard({
+  artist,
+  style,
+}: {
+  artist: Artist;
+  style?: React.CSSProperties;
+}) {
   return (
     <Link
       to={`/artists/${artist.id}`}
       className={`${styles.card} ${styles.artistCard}`}
+      style={style}
     >
       <ArtistAvatar
         artistId={artist.id}

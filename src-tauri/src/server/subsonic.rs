@@ -95,7 +95,9 @@ impl SubsonicClient {
         }
 
         let envelope: Envelope<T> = serde_json::from_str(&body).map_err(|err| {
-            HushError::Server(format!("Could not read the server response for `{method}`: {err}"))
+            HushError::Server(format!(
+                "Could not read the server response for `{method}`: {err}"
+            ))
         })?;
 
         let response = envelope.response;
@@ -120,7 +122,11 @@ fn map_error(code: i64, message: String) -> HushError {
         }),
         70 => HushError::Server(format!(
             "Not found: {}",
-            if trimmed.is_empty() { "requested item" } else { &trimmed }
+            if trimmed.is_empty() {
+                "requested item"
+            } else {
+                &trimmed
+            }
         )),
         _ => HushError::Server(if trimmed.is_empty() {
             format!("Server error (code {code})")
@@ -386,7 +392,9 @@ impl MusicServer for SubsonicClient {
             extra.push(("fromYear", "0".to_string()));
             extra.push(("toYear", "3000".to_string()));
         }
-        let response = self.call::<AlbumListPayload>("getAlbumList2", &extra).await?;
+        let response = self
+            .call::<AlbumListPayload>("getAlbumList2", &extra)
+            .await?;
         Ok(response.payload.album_list2.album)
     }
 

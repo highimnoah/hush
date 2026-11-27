@@ -433,7 +433,11 @@ impl Controller {
     }
 
     fn apply_guest_state(&mut self, state: &SessionState) {
-        let local = self.local.lock().map(|guard| guard.clone()).unwrap_or_default();
+        let local = self
+            .local
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
 
         let Some(track) = state.track.clone() else {
             self.player.send(Command::Stop);
@@ -595,7 +599,11 @@ impl Controller {
         if !state.playing {
             return;
         }
-        let local_position = self.local.lock().map(|guard| guard.clone()).unwrap_or_default();
+        let local_position = self
+            .local
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
         self.correct_drift(&state, &local_position);
     }
 
@@ -652,9 +660,7 @@ impl Controller {
         let changed = self.sync != status
             || self
                 .drift_ms
-                .map(|previous| {
-                    (previous - drift_ms.unwrap_or(previous)).abs() > 80.0
-                })
+                .map(|previous| (previous - drift_ms.unwrap_or(previous)).abs() > 80.0)
                 .unwrap_or(true);
         self.sync = status;
         self.drift_ms = drift_ms;
@@ -735,7 +741,10 @@ fn install_listeners(app: &AppHandle, local: Arc<Mutex<LocalPlayback>>, notify: 
                     artist: track.artist.unwrap_or_default(),
                     album: track.album.unwrap_or_default(),
                     cover_art: track.cover_art,
-                    duration: track.duration.map(|duration| duration as f64).unwrap_or(0.0),
+                    duration: track
+                        .duration
+                        .map(|duration| duration as f64)
+                        .unwrap_or(0.0),
                 });
                 guard.position = snapshot.position;
                 guard.playing = snapshot.status == PlaybackStatus::Playing;

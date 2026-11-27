@@ -199,7 +199,6 @@ export interface Settings {
   discordLargeImage: string;
   discordTimestamps: boolean;
   discordUseCover: boolean;
-  accent: string;
   fullscreenSidebarOpen: boolean;
   fullscreenSidebarPanel: FullscreenPanel;
   artistImages: ArtistImageMode;
@@ -315,10 +314,4 @@ export interface UiCommand {
   value?: string;
 }
 
-export const ACCENTS: Record<string, { label: string; color: string }> = {
-  blue: { label: "Midnight blue", color: "#82aaff" },
-  mint: { label: "Soft mint", color: "#8fe3c4" },
-  rose: { label: "Dusty rose", color: "#f2a6c0" },
-  amber: { label: "Warm amber", color: "#f2cf8f" },
-  lavender: { label: "Lavender", color: "#b9a7ff" },
-};
+

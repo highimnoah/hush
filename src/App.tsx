@@ -1,6 +1,6 @@
 import { AlertCircle, X } from "lucide-react";
 import { useEffect } from "react";
-import { HashRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import { NowPlaying } from "./components/NowPlaying";
 import { PlayerBar } from "./components/PlayerBar";
@@ -11,7 +11,8 @@ import { SongContextMenu } from "./components/ui/SongContextMenu";
 import { ToastHost } from "./components/ui/ToastHost";
 import { UpdateDialog } from "./components/ui/UpdateDialog";
 import { WindowResizeHandles } from "./components/ui/WindowResizeHandles";
-import { subscribePlayerEvents } from "./lib/ipc";
+import { dataCache } from "./lib/cache";
+import { api, subscribePlayerEvents } from "./lib/ipc";
 import type { RepeatMode } from "./lib/types";
 import { usePlayer } from "./store/player";
 import { useSession } from "./store/session";
@@ -88,7 +89,6 @@ function useAppBootstrap() {
   const initPlayer = usePlayer((state) => state.init);
   const restoreSession = usePlayer((state) => state.restoreSession);
   const loadSession = useSession((state) => state.load);
-  const accent = useSettings((state) => state.settings?.accent ?? "blue");
   const loaded = useSettings((state) => state.loaded);
   const loadVersion = useUpdater((state) => state.loadVersion);
 
@@ -107,6 +107,47 @@ function useAppBootstrap() {
   useEffect(() => {
     void loadVersion();
   }, [loadVersion]);
+
+  // Once the app is loaded and configured, gently warm the caches for the
+  // most common library views in the background. This keeps the first visit
+  // to Albums/Artists/Songs snappy without blocking startup or playback.
+  useEffect(() => {
+    if (!loaded) return;
+    if (!isConfigured(useSettings.getState().settings)) return;
+
+    const prefetch = () => {
+      if (!dataCache.has("artists:list")) {
+        void api
+          .getArtists()
+          .then((data) => dataCache.set("artists:list", data))
+          .catch(() => {});
+      }
+      if (!dataCache.has("albums:list:newest")) {
+        void api
+          .getAlbums("newest", 120)
+          .then((data) => dataCache.set("albums:list:newest", data))
+          .catch(() => {});
+      }
+      if (!dataCache.has("songs:page::0")) {
+        void api
+          .getSongsPage("", 200, 0)
+          .then((data) => dataCache.set("songs:page::0", data))
+          .catch(() => {});
+      }
+    };
+
+    const handle = window.requestIdleCallback
+      ? window.requestIdleCallback(prefetch, { timeout: 3000 })
+      : window.setTimeout(prefetch, 800);
+
+    return () => {
+      if (window.cancelIdleCallback) {
+        window.cancelIdleCallback(handle as number);
+      } else {
+        window.clearTimeout(handle as number);
+      }
+    };
+  }, [loaded]);
 
   // Silent update check a few seconds after launch. Delayed so it never
   // competes with restoring the library/session at startup.
@@ -142,9 +183,8 @@ function useAppBootstrap() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.accent = accent;
     document.title = "hush";
-  }, [accent]);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -212,38 +252,58 @@ export default function App() {
   useAppBootstrap();
 
   const loaded = useSettings((state) => state.loaded);
-  const error = usePlayer((state) => state.error);
-  const clearError = usePlayer((state) => state.clearError);
-  const nowPlayingOpen = usePlayer((state) => state.nowPlayingOpen);
 
   if (!loaded) return <Splash />;
 
   return (
     <HashRouter>
+      <AppShell />
+    </HashRouter>
+  );
+}
+
+function AppShell() {
+  const location = useLocation();
+  const nowPlayingOpen = usePlayer((state) => state.nowPlayingOpen);
+  const error = usePlayer((state) => state.error);
+  const clearError = usePlayer((state) => state.clearError);
+
+  useEffect(() => {
+    const main = document.querySelector("[data-main]");
+    if (main) main.scrollTop = 0;
+  }, [location.pathname]);
+
+  return (
+    <>
       <div
         className={`${styles.app} ${nowPlayingOpen ? styles.appImmersive : ""}`}
       >
         <TitleBar />
         <Sidebar />
-        <main className={styles.main}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/songs" element={<SongsView />} />
-            <Route path="/together" element={<TogetherView />} />
-            <Route path="/artists" element={<ArtistsView />} />
-            <Route path="/artists/:id" element={<ArtistView />} />
-            <Route path="/albums" element={<AlbumsView />} />
-            <Route path="/albums/:id" element={<AlbumView />} />
-            <Route path="/genres" element={<GenresView />} />
-            <Route path="/genres/:name" element={<GenreView />} />
-            <Route path="/playlists" element={<PlaylistsView />} />
-            <Route path="/playlists/:id" element={<PlaylistView />} />
-            <Route path="/liked" element={<LikedView />} />
-            <Route path="/lyrics" element={<LyricsView />} />
-            <Route path="/lyrics/:trackId" element={<LyricsEditorView />} />
-            <Route path="/settings" element={<SettingsView />} />
-            <Route path="*" element={<Home />} />
-          </Routes>
+        <main className={styles.main} data-main>
+          <div
+            key={location.pathname}
+            className={styles.viewTransition}
+          >
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/songs" element={<SongsView />} />
+              <Route path="/together" element={<TogetherView />} />
+              <Route path="/artists" element={<ArtistsView />} />
+              <Route path="/artists/:id" element={<ArtistView />} />
+              <Route path="/albums" element={<AlbumsView />} />
+              <Route path="/albums/:id" element={<AlbumView />} />
+              <Route path="/genres" element={<GenresView />} />
+              <Route path="/genres/:name" element={<GenreView />} />
+              <Route path="/playlists" element={<PlaylistsView />} />
+              <Route path="/playlists/:id" element={<PlaylistView />} />
+              <Route path="/liked" element={<LikedView />} />
+              <Route path="/lyrics" element={<LyricsView />} />
+              <Route path="/lyrics/:trackId" element={<LyricsEditorView />} />
+              <Route path="/settings" element={<SettingsView />} />
+              <Route path="*" element={<Home />} />
+            </Routes>
+          </div>
         </main>
         {nowPlayingOpen ? null : (
           <div className={styles.playerSlot}>
@@ -273,6 +333,6 @@ export default function App() {
           </button>
         </div>
       ) : null}
-    </HashRouter>
+    </>
   );
 }

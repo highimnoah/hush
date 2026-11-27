@@ -118,6 +118,42 @@ textarea {
   }
 }
 
+/* Routed view fade-in. */
+@keyframes hush-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Grid cards: staggered top-left → bottom-right entrance. */
+@keyframes hush-card-in {
+  from {
+    opacity: 0;
+    transform: translate(-12px, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Track rows: staggered top → bottom entrance. */
+@keyframes hush-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes hush-spin {
   to {
     transform: rotate(360deg);
@@ -131,5 +167,16 @@ textarea {
   }
   50% {
     opacity: 0.8;
+  }
+}
+
+/* Respect the user's motion preference everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }

@@ -13,7 +13,7 @@ import { formatDuration, isExplicit } from "../lib/format";
 import { useConfigured } from "../lib/hooks";
 import { api } from "../lib/ipc";
 import type { Album, AlbumDetail, Song } from "../lib/types";
-import { useAsync } from "../lib/useAsync";
+import { useCachedAsync } from "../lib/useAsync";
 import { useLibrary } from "../store/library";
 import { usePlayer } from "../store/player";
 import styles from "../styles/library.module.css";
@@ -52,7 +52,8 @@ function AlbumBody({ detail }: { detail: AlbumDetail }) {
     songs.find((song) => song.genre?.trim())?.genre?.trim() ||
     "";
 
-  const artistAlbums = useAsync<Album[]>(
+  const artistAlbums = useCachedAsync<Album[]>(
+    artistId ? `album:${album.id}:artistShelf` : null,
     () =>
       artistId
         ? api
@@ -65,7 +66,8 @@ function AlbumBody({ detail }: { detail: AlbumDetail }) {
         : Promise.resolve([]),
     [artistId, album.id],
   );
-  const genreAlbums = useAsync<Album[]>(
+  const genreAlbums = useCachedAsync<Album[]>(
+    genre ? `album:${album.id}:genreShelf:${genre}` : null,
     () =>
       genre
         ? api.getAlbumsByGenre(genre, 12).catch(() => [] as Album[])
@@ -170,43 +172,66 @@ function AlbumBody({ detail }: { detail: AlbumDetail }) {
         <TrackList songs={songs} showAlbum={false} showArtwork={false} />
       )}
 
-      {artistShelf.length ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>
-              More by {album.artist ?? "this artist"}
-            </h2>
-            {artistId ? (
-              <Link to={`/artists/${artistId}`} className={styles.sectionLink}>
-                See all
-              </Link>
-            ) : null}
-          </div>
-          <div className={`${styles.grid} ${styles.gridWide}`}>
-            {artistShelf.map((item) => (
-              <AlbumCard key={item.id} album={item} />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {artistShelf.length || genreShelf.length ? (
+        <div className={styles.recs}>
+          {artistShelf.length ? (
+            <section className={styles.section}>
+              <div className={styles.sectionHead}>
+                <h2 className={styles.sectionTitle}>
+                  More by {album.artist ?? "this artist"}
+                </h2>
+                {artistId ? (
+                  <Link
+                    to={`/artists/${artistId}`}
+                    className={styles.sectionLink}
+                  >
+                    See all
+                  </Link>
+                ) : null}
+              </div>
+              <div className={`${styles.grid} ${styles.gridWide}`}>
+                {artistShelf.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className={styles.gridItem}
+                    style={{
+                      animationDelay: `${Math.min(index * 25, 420)}ms`,
+                    }}
+                  >
+                    <AlbumCard album={item} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-      {genreShelf.length ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>More {genre} albums</h2>
-            <Link
-              to={`/genres/${encodeURIComponent(genre)}`}
-              className={styles.sectionLink}
-            >
-              See all
-            </Link>
-          </div>
-          <div className={`${styles.grid} ${styles.gridWide}`}>
-            {genreShelf.map((item) => (
-              <AlbumCard key={item.id} album={item} />
-            ))}
-          </div>
-        </section>
+          {genreShelf.length ? (
+            <section className={styles.section}>
+              <div className={styles.sectionHead}>
+                <h2 className={styles.sectionTitle}>More {genre} albums</h2>
+                <Link
+                  to={`/genres/${encodeURIComponent(genre)}`}
+                  className={styles.sectionLink}
+                >
+                  See all
+                </Link>
+              </div>
+              <div className={`${styles.grid} ${styles.gridWide}`}>
+                {genreShelf.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className={styles.gridItem}
+                    style={{
+                      animationDelay: `${Math.min(index * 25, 420)}ms`,
+                    }}
+                  >
+                    <AlbumCard album={item} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
       ) : null}
     </>
   );
@@ -216,7 +241,8 @@ export function AlbumView() {
   const { id } = useParams<{ id: string }>();
   const configured = useConfigured();
 
-  const state = useAsync<AlbumDetail | null>(
+  const state = useCachedAsync<AlbumDetail | null>(
+    configured && id ? `album:detail:${id}` : null,
     () =>
       configured && id
         ? api.getAlbum(id)

@@ -4,8 +4,8 @@ pub mod config;
 pub mod discord;
 pub mod error;
 pub mod events;
-pub mod lyrics;
 pub mod lrclib;
+pub mod lyrics;
 pub mod mpris;
 pub mod playback;
 pub mod player;
@@ -45,7 +45,7 @@ pub struct AppState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     configure_bundled_gstreamer();
-    enable_software_rendering_if_requested();
+    configure_webkitgtk_rendering();
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -96,10 +96,7 @@ pub fn run() {
             discord.configure(discord::DiscordConfig::from(&settings));
 
             let mpris = MprisHandle::spawn(handle.clone());
-            let waveforms = WaveformHandle::new(
-                handle.clone(),
-                config_dir.join("waveforms.json"),
-            );
+            let waveforms = WaveformHandle::new(handle.clone(), config_dir.join("waveforms.json"));
 
             let player = PlayerHandle::spawn(
                 handle.clone(),
@@ -114,12 +111,8 @@ pub fn run() {
                 settings.fade_seconds as f64,
             );
 
-            let session = SessionHandle::spawn(
-                handle.clone(),
-                player.clone(),
-                config.clone(),
-                http.clone(),
-            );
+            let session =
+                SessionHandle::spawn(handle.clone(), player.clone(), config.clone(), http.clone());
 
             if let Err(err) = tray::create(app.handle()) {
                 eprintln!("[hush] could not create system tray: {err}");
@@ -329,8 +322,7 @@ fn configure_bundled_gstreamer() {
         let cache = std::env::var_os("XDG_CACHE_HOME")
             .map(std::path::PathBuf::from)
             .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(|home| std::path::PathBuf::from(home).join(".cache"))
+                std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".cache"))
             })
             .unwrap_or_else(std::env::temp_dir)
             .join("hush");
@@ -376,10 +368,7 @@ mod windows_gstreamer {
             std::env::set_var("GIO_EXTRA_MODULES", &gio_modules);
         }
 
-        let schemas = root
-            .join("share")
-            .join("glib-2.0")
-            .join("schemas");
+        let schemas = root.join("share").join("glib-2.0").join("schemas");
         if schemas.is_dir() {
             std::env::set_var("GSETTINGS_SCHEMA_DIR", &schemas);
         }
@@ -463,9 +452,17 @@ mod windows_gstreamer {
     }
 }
 
-/// Set `HUSH_SOFTWARE_RENDERING=1` to force WebKitGTK into a software-rendered
-/// path. Useful on some NVIDIA + Wayland combinations.
-fn enable_software_rendering_if_requested() {
+/// WebKitGTK's DMABUF renderer is a common source of scroll stutter on
+/// Wayland/Linux. Disable it by default, while still allowing users to opt
+/// back in via `WEBKIT_DISABLE_DMABUF_RENDERER=0`.
+fn configure_webkitgtk_rendering() {
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
+    // `HUSH_SOFTWARE_RENDERING=1` goes further and disables the compositor
+    // too — useful as a heavier fallback on problematic NVIDIA setups.
     if std::env::var_os("HUSH_SOFTWARE_RENDERING").is_none() {
         return;
     }

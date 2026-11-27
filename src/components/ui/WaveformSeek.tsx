@@ -3,7 +3,6 @@ import type { KeyboardEvent, PointerEvent } from "react";
 
 import { formatTime } from "../../lib/format";
 import { usePlayer } from "../../store/player";
-import { useSettings } from "../../store/settings";
 import styles from "../../styles/ui.module.css";
 
 const WAVEFORM_SLOTS = 240;
@@ -39,6 +38,7 @@ export function WaveformSeek({
   trackId: forcedTrackId,
 }: WaveformSeekProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const widthRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const colorsRef = useRef<{
     accent: string;
@@ -59,7 +59,6 @@ export function WaveformSeek({
   );
   const trackId = forcedTrackId ?? currentTrackId;
   const waveform = forcedTrackId ? storedWaveform : liveWaveform;
-  const accent = useSettings((state) => state.settings?.accent ?? "blue");
   const ensureWaveform = usePlayer((state) => state.ensureWaveform);
 
   const peaks = waveform?.peaks;
@@ -99,8 +98,11 @@ export function WaveformSeek({
     const canvas = canvasRef.current;
     if (!wrapper || !canvas) return;
 
-    const rect = wrapper.getBoundingClientRect();
-    const width = Math.max(1, Math.floor(rect.width));
+    // Cache the wrapper width from the ResizeObserver instead of forcing a
+    // layout read on every position tick (~5×/s).
+    const width =
+      widthRef.current ||
+      Math.max(1, Math.floor(wrapper.getBoundingClientRect().width));
     const dpr = window.devicePixelRatio || 1;
     const pixelWidth = Math.max(1, Math.floor(width * dpr));
     const pixelHeight = Math.max(1, Math.floor(height * dpr));
@@ -116,14 +118,14 @@ export function WaveformSeek({
     context.clearRect(0, 0, width, height);
 
     // Reading the theme colors forces a style recalculation, so cache them
-    // per accent: the waveform redraws several times per second.
-    if (!colorsRef.current || colorsRef.current.accent !== accent) {
+    // once: the waveform redraws several times per second.
+    if (!colorsRef.current) {
       const computed = getComputedStyle(document.documentElement);
       colorsRef.current = {
-        accent,
-        played: computed.getPropertyValue("--accent").trim() || "#82aaff",
+        accent: "",
+        played: computed.getPropertyValue("--accent").trim() || "#d6d6d2",
         unplayed:
-          computed.getPropertyValue("--border-strong").trim() || "#2c3d63",
+          computed.getPropertyValue("--border-strong").trim() || "#3c3c3c",
       };
     }
     const { played, unplayed } = colorsRef.current;
@@ -181,14 +183,22 @@ export function WaveformSeek({
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-    const observer = new ResizeObserver(() => drawRef.current());
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        widthRef.current = Math.max(1, Math.floor(entry.contentRect.width));
+      } else if (wrapper) {
+        widthRef.current = Math.max(1, Math.floor(wrapper.clientWidth));
+      }
+      drawRef.current();
+    });
     observer.observe(wrapper);
     return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
     drawRef.current();
-  }, [data, ratio, hoverRatio, height, accent]);
+  }, [data, ratio, hoverRatio, height]);
 
   const valueFromClientX = (clientX: number) => {
     const wrapper = wrapperRef.current;

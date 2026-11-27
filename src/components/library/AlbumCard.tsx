@@ -1,5 +1,5 @@
 import { Heart, Play } from "lucide-react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../lib/ipc";
@@ -9,7 +9,13 @@ import { usePlayer } from "../../store/player";
 import styles from "../../styles/library.module.css";
 import { Artwork } from "../ui/Artwork";
 
-export function AlbumCard({ album }: { album: Album }) {
+export function AlbumCard({
+  album,
+  style,
+}: {
+  album: Album;
+  style?: React.CSSProperties;
+}) {
   const playSongs = usePlayer((state) => state.playSongs);
   const starred = useLibrary((state) =>
     state.isStarred("album", album.id, album.starred),
@@ -31,7 +37,7 @@ export function AlbumCard({ album }: { album: Album }) {
   };
 
   return (
-    <div className={styles.card}>
+    <div className={styles.card} style={style}>
       <div className={styles.cardArt}>
         <Link to={`/albums/${album.id}`} aria-label={`Open ${album.name}`}>
           <Artwork coverId={album.coverArt} size={320} alt={album.name} />

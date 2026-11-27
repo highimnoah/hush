@@ -2,7 +2,7 @@
 
 **hush** is a calm, minimal desktop music player for [Navidrome](https://www.navidrome.org/) and any Subsonic-compatible server. It pairs a Tauri v2 shell with a native Rust audio pipeline (GStreamer), so playback quality and ReplayGain do not depend on the WebView.
 
-The visual language is a flat, very dark midnight-blue theme with off-white text, restrained pastel accents, and **no gradients**. Typography is self-hosted Montserrat. The app name is always written lowercase: **hush**.
+The visual language is a flat, dark gothic-greyscale theme with off-white text, monochrome accents, and **no gradients**. Typography is self-hosted Montserrat. The app name is always written lowercase: **hush**.
 
 ---
 
@@ -38,7 +38,7 @@ The visual language is a flat, very dark midnight-blue theme with off-white text
 - Compact always-on-top mini player window.
 - Sleep timer that fades playback out and pauses: after a chosen time, at the end of the current track, or at the end of the queue.
 - Volume and window size restored between launches.
-- Settings persisted between restarts, with a flat accent-colour picker and a comfortable UI scale.
+- Settings persisted between restarts, with a comfortable UI scale.
 - Loading, empty and error states throughout; keyboard-accessible controls.
 
 ---
@@ -390,7 +390,6 @@ Everything is editable in **Settings**. A representative `settings.json`:
   "discordLargeImage": "hush",
   "discordTimestamps": true,
   "discordUseCover": true,
-  "accent": "blue",
   "fullscreenSidebarOpen": true,
   "fullscreenSidebarPanel": "queue",
   "artistImages": "auto",
@@ -411,8 +410,6 @@ Everything is editable in **Settings**. A representative `settings.json`:
 Credentials are stored locally in plaintext JSON. Prefer a token, and treat the config file as sensitive.
 
 ### Accents
-
-`blue` (default), `mint`, `rose`, `amber`, `lavender`.
 
 ### Artist images
 
@@ -654,7 +651,7 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 ## Testing checklist
 
 - [ ] App launches; window title and branding read `hush`; Montserrat is applied.
-- [ ] Theme is flat midnight blue; no gradients anywhere.
+- [ ] Theme is flat dark gothic greyscale; no gradients anywhere.
 - [ ] Settings: enter server URL + token/salt; **Test connection** succeeds; **Save** persists across restart.
 - [ ] Open Settings with an invalid URL / wrong credentials → clear error state.
 - [ ] Home loads recently added / recently played / most played / starred, plus Continue listening when a session exists.

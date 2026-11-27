@@ -101,7 +101,8 @@ impl LyricsStore {
     }
 
     fn path_for(&self, track_id: &str) -> PathBuf {
-        self.dir.join(format!("{}.lrc", hex_encode(track_id.as_bytes())))
+        self.dir
+            .join(format!("{}.lrc", hex_encode(track_id.as_bytes())))
     }
 
     fn track_id_from_path(&self, path: &Path) -> Option<String> {
@@ -301,13 +302,28 @@ pub fn parse(text: &str) -> ParsedLrc {
 pub fn serialize(lines: &[LrcLine], meta: &LrcMeta) -> String {
     let mut out = String::new();
 
-    if let Some(value) = meta.title.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+    if let Some(value) = meta
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
         out.push_str(&format!("[ti:{value}]\n"));
     }
-    if let Some(value) = meta.artist.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+    if let Some(value) = meta
+        .artist
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
         out.push_str(&format!("[ar:{value}]\n"));
     }
-    if let Some(value) = meta.album.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+    if let Some(value) = meta
+        .album
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
         out.push_str(&format!("[al:{value}]\n"));
     }
     if let Some(duration) = meta.duration_ms {
@@ -511,7 +527,9 @@ mod tests {
             duration_ms: None,
         };
 
-        let saved = store.save("track/with odd:id", &lines, &meta).expect("save");
+        let saved = store
+            .save("track/with odd:id", &lines, &meta)
+            .expect("save");
         assert_eq!(saved.synced.as_ref().map(Vec::len), Some(2));
 
         let listed = store.list();
