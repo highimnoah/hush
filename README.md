@@ -652,8 +652,9 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 
 - [ ] App launches; window title and branding read `hush`; Montserrat is applied.
 - [ ] Theme is flat dark gothic greyscale; no gradients anywhere.
-- [ ] Settings: enter server URL + token/salt; **Test connection** succeeds; **Save** persists across restart.
-- [ ] Open Settings with an invalid URL / wrong credentials → clear error state.
+- [ ] Settings shows a grid of cards; clicking a card opens its section in a modal; **Cancel** discards, **Save** persists.
+- [ ] Settings → Music server: enter URL + token/salt; **Test connection** succeeds; **Save** persists across restart.
+- [ ] Settings → Music server with invalid URL / wrong credentials → clear error state.
 - [ ] Home loads recently added / recently played / most played / starred, plus Continue listening when a session exists.
 - [ ] Artists, Albums, Songs and Playlists each have a working search/filter bar; the global Search entry is gone; clearing a query restores the normal listing (and the album sort control).
 - [ ] Songs view loads the library, Play/Shuffle work, and "Load more" pages through it without duplicates; searching filters the list.

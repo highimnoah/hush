@@ -16,7 +16,7 @@ interface SettingsStore {
   load: () => Promise<void>;
   save: (settings: Settings) => Promise<Settings>;
   /** Persist a small patch without re-checking the connection. */
-  patch: (patch: Partial<Settings>) => Promise<void>;
+  patch: (patch: Partial<Settings>) => Promise<Settings>;
   test: (settings: Settings) => Promise<ServerInfo>;
   checkConnection: () => Promise<void>;
 }
@@ -80,12 +80,13 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 
   patch: async (patch) => {
     const current = get().settings;
-    if (!current) return;
+    if (!current) throw new Error("Settings not loaded");
     const saved = await api.updateSettings({ ...current, ...patch });
     set({
       settings: saved,
       serverName: saved.serverName || hostName(saved.serverUrl),
     });
+    return saved;
   },
 
   test: (settings) => api.testConnection(settings),

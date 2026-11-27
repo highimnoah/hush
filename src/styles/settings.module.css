@@ -25,6 +25,92 @@
   align-items: flex-end;
   gap: 8px;
 }
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+  animation: hush-fade-in 220ms ease both;
+}
+
+.settingCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 22px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: left;
+  transition: border-color var(--t), background var(--t), transform var(--t);
+  animation: hush-card-in 260ms ease-out both;
+}
+.settingCard:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.settingCard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.settingCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.settingCardArrow {
+  color: var(--text-faint);
+  transition: color var(--t), transform var(--t);
+}
+.settingCard:hover .settingCardArrow {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
+.settingsModal {
+  max-width: 620px;
+}
+.modalHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.modalTitle {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 650;
+}
+.modalClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: background var(--t), color var(--t);
+}
+.modalClose:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.modalBody {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 6px;
+}
+
 .saveRow {
   display: flex;
   align-items: center;

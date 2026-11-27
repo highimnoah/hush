@@ -513,7 +513,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(4, 8, 18, 0.62);
+  background: rgba(0, 0, 0, 0.62);
   animation: hush-fade-in 120ms ease;
 }
 .modal {

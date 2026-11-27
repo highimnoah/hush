@@ -1,63 +1,148 @@
 import {
-  AlertCircle,
-  Check,
+  ChevronRight,
   Disc3,
   Handshake,
-  Info,
   Radio,
   RefreshCw,
   Server,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { Slider } from "../components/ui/Slider";
 import { ErrorState } from "../components/ui/ErrorState";
 import { Loading } from "../components/ui/States";
-import { Switch } from "../components/ui/Switch";
 import { dataCache } from "../lib/cache";
 import { formatBytes } from "../lib/format";
 import { api } from "../lib/ipc";
 import { notifyLyricsChanged } from "../lib/lyrics";
 import type {
   ArtistImageCacheInfo,
-  ArtistImageMode,
-  ReplayGainMode,
   Settings,
-  TransitionMode,
 } from "../lib/types";
 import { useSettings } from "../store/settings";
+import { useToast } from "../store/toast";
 import { useUpdater } from "../store/updater";
 import styles from "../styles/settings.module.css";
 import ui from "../styles/ui.module.css";
+import {
+  ArtistImagesSection,
+} from "./settings/ArtistImagesSection";
+import { DiscordSection } from "./settings/DiscordSection";
+import { PlaybackSection } from "./settings/PlaybackSection";
+import { ServerSection } from "./settings/ServerSection";
+import { SettingsModal } from "./settings/SettingsModal";
+import { TogetherSection } from "./settings/TogetherSection";
+import { UpdatesSection } from "./settings/UpdatesSection";
 
-type TestState = "idle" | "testing" | "ok" | "error";
+type SectionKey =
+  | "server"
+  | "playback"
+  | "discord"
+  | "together"
+  | "artistImages"
+  | "updates";
 
-const TOKENS = [
-  "{app}",
-  "{title}",
-  "{artist}",
-  "{album}",
-  "{albumArtist}",
-  "{server}",
-  "{format}",
-  "{bitrate}",
-  "{elapsed}",
-  "{duration}",
+interface SectionMeta {
+  key: SectionKey;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+}
+
+const SECTIONS: SectionMeta[] = [
+  {
+    key: "server",
+    title: "Music server",
+    description: "Navidrome or any Subsonic-compatible server.",
+    icon: <Server size={18} />,
+  },
+  {
+    key: "playback",
+    title: "Playback",
+    description: "ReplayGain, transitions, resume and lyrics source.",
+    icon: <Disc3 size={18} />,
+  },
+  {
+    key: "discord",
+    title: "Discord Rich Presence",
+    description: "Show what you're listening to while a track is playing.",
+    icon: <Radio size={18} />,
+  },
+  {
+    key: "together",
+    title: "Listen together",
+    description: "Self-host the hush-sync relay and listen with friends.",
+    icon: <Handshake size={18} />,
+  },
+  {
+    key: "artistImages",
+    title: "Artist images",
+    description: "Server, automatic or off; manage the local cache.",
+    icon: <Users size={18} />,
+  },
+  {
+    key: "updates",
+    title: "Updates",
+    description: "Keep hush up to date.",
+    icon: <RefreshCw size={18} />,
+  },
 ];
 
-const REPLAYGAIN_LABELS: Record<ReplayGainMode, string> = {
-  off: "Off",
-  track: "Track",
-  album: "Album",
-};
+function normalizedServer(
+  form: Settings,
+  authMode: "token" | "password",
+): Settings {
+  const base = { ...form };
+  if (authMode === "token") {
+    base.password = "";
+  } else {
+    base.token = "";
+    base.salt = "";
+  }
+  return base;
+}
+
+function sectionPatch(key: SectionKey, form: Settings): Partial<Settings> {
+  switch (key) {
+    case "playback":
+      return {
+        replaygain: form.replaygain,
+        replaygainPreamp: form.replaygainPreamp,
+        transitionMode: form.transitionMode,
+        fadeSeconds: form.fadeSeconds,
+        resumePlayback: form.resumePlayback,
+        lrclibLyrics: form.lrclibLyrics,
+      };
+    case "discord":
+      return {
+        discordEnabled: form.discordEnabled,
+        discordClientId: form.discordClientId,
+        discordLargeImage: form.discordLargeImage,
+        discordDetails: form.discordDetails,
+        discordState: form.discordState,
+        discordTimestamps: form.discordTimestamps,
+        discordUseCover: form.discordUseCover,
+      };
+    case "together":
+      return {
+        sessionName: form.sessionName,
+        sessionRelayUrl: form.sessionRelayUrl,
+      };
+    case "artistImages":
+      return { artistImages: form.artistImages };
+    case "updates":
+      return { autoUpdate: form.autoUpdate };
+    default:
+      return {};
+  }
+}
 
 export function SettingsView() {
   const settings = useSettings((state) => state.settings);
   const loaded = useSettings((state) => state.loaded);
   const loadError = useSettings((state) => state.loadError);
   const saveSettings = useSettings((state) => state.save);
-  const testConnection = useSettings((state) => state.test);
+  const patchSettings = useSettings((state) => state.patch);
 
   const updaterStatus = useUpdater((state) => state.status);
   const updaterSupported = useUpdater((state) => state.supported);
@@ -70,16 +155,18 @@ export function SettingsView() {
 
   const [form, setForm] = useState<Settings | null>(null);
   const [authMode, setAuthMode] = useState<"token" | "password">("token");
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [testState, setTestState] = useState<TestState>("idle");
-  const [testMessage, setTestMessage] = useState<string | null>(null);
+
+  const [activeSection, setActiveSection] = useState<SectionKey | null>(null);
+  const [draftForm, setDraftForm] = useState<Settings | null>(null);
+  const [draftAuthMode, setDraftAuthMode] = useState<"token" | "password">(
+    "token",
+  );
+  const [savingSection, setSavingSection] = useState<SectionKey | null>(null);
+
   const [artistCache, setArtistCache] = useState<ArtistImageCacheInfo | null>(
     null,
   );
   const [clearingCache, setClearingCache] = useState(false);
-  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings && form === null) {
@@ -105,6 +192,97 @@ export function SettingsView() {
       .catch(() => {});
   }, []);
 
+  const update = (patch: Partial<Settings>) =>
+    setDraftForm((current) => (current ? { ...current, ...patch } : current));
+
+  const openSection = (key: SectionKey) => {
+    if (!form) return;
+    setDraftForm({ ...form });
+    setDraftAuthMode(authMode);
+    setActiveSection(key);
+  };
+
+  const closeSection = () => {
+    setActiveSection(null);
+    setDraftForm(null);
+  };
+
+  const handleSave = async (key: SectionKey) => {
+    if (!draftForm || !settings) return;
+    setSavingSection(key);
+    try {
+      let saved: Settings;
+      if (key === "server") {
+        saved = await saveSettings(normalizedServer(draftForm, draftAuthMode));
+      } else {
+        saved = await patchSettings(sectionPatch(key, draftForm));
+      }
+
+      setForm({ ...saved });
+      if (key === "server") {
+        setAuthMode(draftAuthMode);
+        const serverChanged =
+          saved.serverUrl.trim() !== settings.serverUrl.trim() ||
+          saved.username.trim() !== settings.username.trim() ||
+          saved.token !== settings.token ||
+          saved.salt !== settings.salt ||
+          saved.password !== settings.password;
+        if (serverChanged) dataCache.clear();
+      }
+      if (
+        key === "playback" &&
+        saved.lrclibLyrics !== settings.lrclibLyrics
+      ) {
+        notifyLyricsChanged();
+      }
+
+      useToast.getState().show("Saved");
+      closeSection();
+    } catch (err) {
+      useToast.getState().show(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  const handleClearArtistCache = async () => {
+    setClearingCache(true);
+    try {
+      const cleared = await api.clearArtistImageCache();
+      setArtistCache(await api.artistImageCacheInfo());
+      useToast.getState().show(
+        `Cleared ${cleared.count} ${
+          cleared.count === 1 ? "image" : "images"
+        } (${formatBytes(cleared.bytes) ?? "0 B"}).`,
+      );
+    } catch (err) {
+      useToast.getState().show(err instanceof Error ? err.message : String(err));
+    } finally {
+      setClearingCache(false);
+    }
+  };
+
+  const updateNote = useMemo(() => {
+    switch (updaterStatus) {
+      case "checking":
+        return "Checking for updates…";
+      case "up-to-date":
+        return "You're up to date.";
+      case "available":
+        return `hush ${updaterVersion ?? ""} is available.`;
+      case "downloading":
+        return "Downloading update…";
+      case "ready":
+        return "Downloaded — install from the update prompt.";
+      case "installing":
+        return "Installing update…";
+      case "error":
+        return "Could not check for updates.";
+      default:
+        return "";
+    }
+  }, [updaterStatus, updaterVersion]);
+
   if (!loaded) {
     return (
       <div className={styles.wrap}>
@@ -124,101 +302,6 @@ export function SettingsView() {
     );
   }
 
-  const update = (patch: Partial<Settings>) =>
-    setForm((current) => (current ? { ...current, ...patch } : current));
-
-  const normalized = (): Settings => {
-    const base = { ...form };
-    if (authMode === "token") {
-      base.password = "";
-    } else {
-      base.token = "";
-      base.salt = "";
-    }
-    return base;
-  };
-
-  const handleSave = async () => {
-    if (saving) return;
-    setSaving(true);
-    setSaveError(null);
-    setSaveMessage(null);
-    const providerChanged = Boolean(
-      form && settings && form.lrclibLyrics !== settings.lrclibLyrics,
-    );
-    const serverChanged = Boolean(
-      form &&
-        settings &&
-        (form.serverUrl.trim() !== settings.serverUrl.trim() ||
-          form.username.trim() !== settings.username.trim() ||
-          form.token !== settings.token ||
-          form.salt !== settings.salt ||
-          form.password !== settings.password),
-    );
-    try {
-      const saved = await saveSettings(normalized());
-      setForm({ ...saved });
-      if (providerChanged) notifyLyricsChanged();
-      if (serverChanged) dataCache.clear();
-      setSaveMessage("Saved");
-      window.setTimeout(() => setSaveMessage(null), 2500);
-    } catch (err) {
-      setSaveError(String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleTest = async () => {
-    setTestState("testing");
-    setTestMessage(null);
-    try {
-      const info = await testConnection(normalized());
-      setTestState("ok");
-      const details = [info.kind, info.version].filter(Boolean).join(" · ");
-      setTestMessage(
-        details ? `Connected to ${details}` : "Connected successfully",
-      );
-    } catch (err) {
-      setTestState("error");
-      setTestMessage(String(err));
-    }
-  };
-
-  const handleClearArtistCache = async () => {
-    setClearingCache(true);
-    setCacheMessage(null);
-    try {
-      const cleared = await api.clearArtistImageCache();
-      setArtistCache(await api.artistImageCacheInfo());
-      const size = formatBytes(cleared.bytes) ?? "0 B";
-      setCacheMessage(
-        `Cleared ${cleared.count} ${cleared.count === 1 ? "image" : "images"} (${size}).`,
-      );
-    } catch (err) {
-      setCacheMessage(String(err));
-    } finally {
-      setClearingCache(false);
-    }
-  };
-
-  const updateNote =
-    updaterStatus === "checking"
-      ? "Checking for updates…"
-      : updaterStatus === "up-to-date"
-        ? "You're up to date."
-        : updaterStatus === "available"
-          ? `hush ${updaterVersion ?? ""} is available.`
-          : updaterStatus === "downloading"
-            ? "Downloading update…"
-            : updaterStatus === "ready"
-              ? "Downloaded — install from the update prompt."
-              : updaterStatus === "installing"
-                ? "Installing update…"
-                : updaterStatus === "error"
-                  ? "Could not check for updates."
-                  : "";
-
   return (
     <div className={styles.wrap}>
       <div className={styles.head}>
@@ -228,719 +311,122 @@ export function SettingsView() {
             Connect your server, tune playback, and make hush yours.
           </div>
         </div>
-        <div className={styles.headActions}>
-          <button
-            type="button"
-            className={`${ui.button} ${ui.primary}`}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? "Saving…" : "Save changes"}
-          </button>
-          <div className={styles.saveRow}>
-            {saveError ? (
-              <span className={`${styles.status} ${styles.statusError}`}>
-                <AlertCircle size={14} />
-                {saveError}
-              </span>
-            ) : saveMessage ? (
-              <span className={`${styles.status} ${styles.statusOk}`}>
-                <Check size={14} />
-                {saveMessage}
-              </span>
-            ) : null}
-          </div>
-        </div>
       </div>
 
-      {/* Server */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <Server size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>Music server</div>
-            <div className={styles.cardDesc}>
-              Navidrome or any Subsonic-compatible server.
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.stack}>
-          <div className={ui.field}>
-            <label className={ui.label} htmlFor="server-url">
-              Server URL
-            </label>
-            <input
-              id="server-url"
-              className={ui.input}
-              value={form.serverUrl}
-              onChange={(event) => update({ serverUrl: event.target.value })}
-              placeholder="https://music.example.com"
-              spellCheck={false}
-              autoComplete="off"
-            />
-          </div>
-
-          <div className={styles.grid2}>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="username">
-                Username
-              </label>
-              <input
-                id="username"
-                className={ui.input}
-                value={form.username}
-                onChange={(event) => update({ username: event.target.value })}
-                autoComplete="username"
-                spellCheck={false}
-              />
-            </div>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="server-name">
-                Server name (optional)
-              </label>
-              <input
-                id="server-name"
-                className={ui.input}
-                value={form.serverName}
-                onChange={(event) => update({ serverName: event.target.value })}
-                placeholder="Shown in Discord presence"
-                spellCheck={false}
-              />
-            </div>
-          </div>
-
-          <div className={ui.field}>
-            <span className={ui.label}>Authentication</span>
-            <div className={ui.segmented} style={{ width: "fit-content" }}>
-              <button
-                type="button"
-                className={`${ui.segment} ${authMode === "token" ? ui.segmentActive : ""}`}
-                onClick={() => setAuthMode("token")}
-              >
-                API token
-              </button>
-              <button
-                type="button"
-                className={`${ui.segment} ${authMode === "password" ? ui.segmentActive : ""}`}
-                onClick={() => setAuthMode("password")}
-              >
-                Password
-              </button>
-            </div>
-            <span className={ui.hint}>
-              {authMode === "token"
-                ? "Generate an API token in Navidrome, then paste the token and its salt."
-                : "Your password is stored locally on this machine."}
-            </span>
-          </div>
-
-          {authMode === "token" ? (
-            <div className={styles.grid2}>
-              <div className={ui.field}>
-                <label className={ui.label} htmlFor="token">
-                  Token
-                </label>
-                <input
-                  id="token"
-                  className={ui.input}
-                  value={form.token}
-                  onChange={(event) => update({ token: event.target.value })}
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-              </div>
-              <div className={ui.field}>
-                <label className={ui.label} htmlFor="salt">
-                  Salt
-                </label>
-                <input
-                  id="salt"
-                  className={ui.input}
-                  value={form.salt}
-                  onChange={(event) => update({ salt: event.target.value })}
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="password">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                className={ui.input}
-                value={form.password}
-                onChange={(event) => update({ password: event.target.value })}
-                autoComplete="current-password"
-              />
-            </div>
-          )}
-
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={`${ui.button} ${ui.ghost}`}
-              onClick={handleTest}
-              disabled={testState === "testing"}
-            >
-              {testState === "testing" ? "Testing…" : "Test connection"}
-            </button>
-            {testState === "ok" ? (
-              <span className={`${styles.status} ${styles.statusOk}`}>
-                <Check size={14} />
-                {testMessage}
-              </span>
-            ) : null}
-            {testState === "error" ? (
-              <span className={`${styles.status} ${styles.statusError}`}>
-                <AlertCircle size={14} />
-                {testMessage}
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      {/* Playback */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <Disc3 size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>Playback</div>
-            <div className={styles.cardDesc}>
-              ReplayGain keeps loudness consistent. Changing between Off and an
-              active mode reloads the current track.
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.stack}>
-          <div className={styles.replaygainRow}>
-            <div>
-              <div className={styles.rowLabel}>ReplayGain</div>
-              <div className={styles.rowHint}>
-                Off, per-track gain, or per-album gain.
-              </div>
-            </div>
-            <div className={ui.segmented}>
-              {(["off", "track", "album"] as ReplayGainMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`${ui.segment} ${form.replaygain === mode ? ui.segmentActive : ""}`}
-                  onClick={() => update({ replaygain: mode })}
-                >
-                  {REPLAYGAIN_LABELS[mode]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className={styles.rowBetween}>
-              <div>
-                <div className={styles.rowLabel}>ReplayGain pre-amp</div>
-                <div className={styles.rowHint}>
-                  Extra headroom or gain applied on top of ReplayGain.
-                </div>
-              </div>
-              <span className={styles.preampValue}>
-                {form.replaygainPreamp > 0 ? "+" : ""}
-                {form.replaygainPreamp.toFixed(0)} dB
-              </span>
-            </div>
-            <Slider
-              value={form.replaygainPreamp + 12}
-              max={24}
-              step={1}
-              ariaLabel="ReplayGain pre-amp"
-              onChange={(value) =>
-                update({ replaygainPreamp: Math.round(value - 12) })
-              }
-            />
-          </div>
-
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>Track transitions</div>
-              <div className={styles.rowHint}>
-                Gapless for album listening, or a short fade at each boundary.
-              </div>
-            </div>
-            <div className={ui.segmented}>
-              {(["gapless", "fade"] as TransitionMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`${ui.segment} ${form.transitionMode === mode ? ui.segmentActive : ""}`}
-                  onClick={() => update({ transitionMode: mode })}
-                >
-                  {mode === "gapless" ? "Gapless" : "Fade"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {form.transitionMode === "fade" ? (
-            <div>
-              <div className={styles.rowBetween}>
-                <div>
-                  <div className={styles.rowLabel}>Fade length</div>
-                  <div className={styles.rowHint}>
-                    How long the volume ramp lasts at each track boundary.
-                  </div>
-                </div>
-                <span className={styles.preampValue}>
-                  {form.fadeSeconds}s
-                </span>
-              </div>
-              <Slider
-                value={Math.max(0, form.fadeSeconds - 1)}
-                max={7}
-                step={1}
-                ariaLabel="Fade length"
-                onChange={(value) =>
-                  update({ fadeSeconds: Math.round(value) + 1 })
-                }
-              />
-            </div>
-          ) : null}
-
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>Resume on launch</div>
-              <div className={styles.rowHint}>
-                Restore the last queue, track and position, and start playing
-                automatically.
-              </div>
-            </div>
-            <Switch
-              checked={form.resumePlayback}
-              onChange={(value) => update({ resumePlayback: value })}
-              label="Resume playback on launch"
-            />
-          </div>
-
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>LRCLIB lyrics</div>
-              <div className={styles.rowHint}>
-                Look up synced lyrics on lrclib.net before asking the server.
-                Lyrics you save locally always take priority.
-              </div>
-            </div>
-            <Switch
-              checked={form.lrclibLyrics}
-              onChange={(value) => update({ lrclibLyrics: value })}
-              label="Use LRCLIB for lyrics"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Discord */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <Radio size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>Discord Rich Presence</div>
-            <div className={styles.cardDesc}>
-              Show what you are listening to while a track is playing.
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.stack}>
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>Enable Rich Presence</div>
-              <div className={styles.rowHint}>
-                Presence hides automatically when paused or stopped.
-              </div>
-            </div>
-            <Switch
-              checked={form.discordEnabled}
-              onChange={(value) => update({ discordEnabled: value })}
-              label="Enable Discord Rich Presence"
-            />
-          </div>
-
-          <div className={styles.grid2}>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="discord-client">
-                Application client ID
-              </label>
-              <input
-                id="discord-client"
-                className={ui.input}
-                value={form.discordClientId}
-                onChange={(event) =>
-                  update({ discordClientId: event.target.value })
-                }
-                spellCheck={false}
-                autoComplete="off"
-              />
-            </div>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="discord-image">
-                Large image asset key
-              </label>
-              <input
-                id="discord-image"
-                className={ui.input}
-                value={form.discordLargeImage}
-                onChange={(event) =>
-                  update({ discordLargeImage: event.target.value })
-                }
-                spellCheck={false}
-                autoComplete="off"
-              />
-            </div>
-          </div>
-
-          <div className={styles.grid2}>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="discord-details">
-                Details template
-              </label>
-              <input
-                id="discord-details"
-                className={ui.input}
-                value={form.discordDetails}
-                onChange={(event) =>
-                  update({ discordDetails: event.target.value })
-                }
-                spellCheck={false}
-              />
-            </div>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="discord-state">
-                State template
-              </label>
-              <input
-                id="discord-state"
-                className={ui.input}
-                value={form.discordState}
-                onChange={(event) =>
-                  update({ discordState: event.target.value })
-                }
-                spellCheck={false}
-              />
-            </div>
-          </div>
-
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>Show progress timeline</div>
-              <div className={styles.rowHint}>
-                Adds a live elapsed/remaining timeline to your presence.
-              </div>
-            </div>
-            <Switch
-              checked={form.discordTimestamps}
-              onChange={(value) => update({ discordTimestamps: value })}
-              label="Show progress timeline in Discord"
-            />
-          </div>
-
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>
-                Use album art as the large image
-              </div>
-              <div className={styles.rowHint}>
-                Fetches the track's cover from your HTTPS server. Falls back to
-                the asset key when unavailable.
-              </div>
-            </div>
-            <Switch
-              checked={form.discordUseCover}
-              onChange={(value) => update({ discordUseCover: value })}
-              label="Use album art in Discord"
-            />
-          </div>
-
-          <div className={styles.help}>
-            Available template fields:
-            <div className={styles.tokens}>
-              {TOKENS.map((token) => (
-                <span key={token} className={styles.token}>
-                  {token}
-                </span>
-              ))}
-            </div>
-            <p style={{ marginTop: 8 }}>
-              With album art enabled, hush passes the track's HTTPS cover URL to
-              Discord. Otherwise it uses the static asset key. To set up the
-              static asset, create a Discord application, upload an image under
-              Rich Presence → Art Assets, and paste the client ID above.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Listen together */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <Handshake size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>Listen together</div>
-            <div className={styles.cardDesc}>
-              Self-host the hush-sync relay; everyone must use the same
-              Navidrome server.
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.grid2}>
-          <div className={ui.field}>
-            <label className={ui.label} htmlFor="session-name">
-              Display name
-            </label>
-            <input
-              id="session-name"
-              className={ui.input}
-              value={form.sessionName}
-              onChange={(event) => update({ sessionName: event.target.value })}
-              placeholder={form.username || "Listener"}
-              spellCheck={false}
-            />
-          </div>
-          <div className={ui.field}>
-            <label className={ui.label} htmlFor="session-relay">
-              Relay URL
-            </label>
-            <input
-              id="session-relay"
-              className={ui.input}
-              value={form.sessionRelayUrl}
-              onChange={(event) =>
-                update({ sessionRelayUrl: event.target.value })
-              }
-              placeholder="ws://127.0.0.1:8787"
-              spellCheck={false}
-            />
-          </div>
-        </div>
-
-        <p className={styles.help} style={{ marginTop: 14 }}>
-          Run <code>hush-sync</code> (see <code>hush-sync/README.md</code>) and
-          use <code>wss://</code> behind TLS for remote friends.
-        </p>
-      </section>
-
-      {/* Artist images */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <Users size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>Artist images</div>
-            <div className={styles.cardDesc}>
-              Show artist pictures in the library. Missing images are fetched
-              from Deezer, with iTunes as a fallback.
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.stack}>
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>Artwork source</div>
-              <div className={styles.rowHint}>
-                Off hides artist pictures, Server uses only images from your
-                music server, Automatic also downloads missing ones.
-              </div>
-            </div>
-            <div className={ui.segmented}>
-              {(["off", "server", "auto"] as ArtistImageMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`${ui.segment} ${form.artistImages === mode ? ui.segmentActive : ""}`}
-                  onClick={() => update({ artistImages: mode })}
-                >
-                  {mode === "off"
-                    ? "Off"
-                    : mode === "server"
-                      ? "Server"
-                      : "Automatic"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>Cached images</div>
-              <div className={styles.rowHint}>
-                {artistCache
-                  ? `${artistCache.count} ${
-                      artistCache.count === 1 ? "image" : "images"
-                    } · ${formatBytes(artistCache.bytes) ?? "0 B"}`
-                  : "Checking cache…"}
-              </div>
-            </div>
-            <button
-              type="button"
-              className={`${ui.button} ${ui.ghost}`}
-              onClick={() => void handleClearArtistCache()}
-              disabled={clearingCache || !artistCache?.count}
-            >
-              {clearingCache ? "Clearing…" : "Clear cache"}
-            </button>
-          </div>
-
-          {cacheMessage ? (
-            <div className={styles.help}>{cacheMessage}</div>
-          ) : null}
-
-          <p className={styles.help} style={{ marginTop: 2 }}>
-            Automatic lookups send only the artist name to Deezer/iTunes.
-            Downloaded pictures are cached locally and served to the app from
-            the cache.
-          </p>
-        </div>
-      </section>
-
-      {/* Updates */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <RefreshCw size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>Updates</div>
-            <div className={styles.cardDesc}>Keep hush up to date.</div>
-          </div>
-        </div>
-
-        {updaterSupported ? (
-          <div className={styles.rowBetween}>
-            <div>
-              <div className={styles.rowLabel}>Check automatically</div>
-              <div className={styles.rowHint}>
-                Look for a new release a few seconds after launch.
-              </div>
-            </div>
-            <Switch
-              checked={form.autoUpdate}
-              onChange={(value) => update({ autoUpdate: value })}
-              label="Check for updates automatically"
-            />
-          </div>
-        ) : null}
-
-        <div className={styles.rowBetween}>
-          <div>
-            <div className={styles.rowLabel}>
-              Version {currentVersion ? currentVersion : "unknown"}
-            </div>
-            <div className={styles.rowHint}>
-              {updaterSupported
-                ? updateNote ||
-                  "Automatic updates work with the Windows installer and the Linux AppImage."
-                : "This build is updated manually from GitHub Releases."}
-            </div>
-          </div>
-          <div className={styles.actions}>
-            {updaterSupported && updaterStatus === "available" ? (
-              <button
-                type="button"
-                className={`${ui.button} ${ui.primary}`}
-                onClick={openUpdatePrompt}
-              >
-                View update
-              </button>
-            ) : null}
-            {updaterSupported ? (
-              <button
-                type="button"
-                className={`${ui.button} ${ui.ghost}`}
-                onClick={() => void checkUpdates(true)}
-                disabled={
-                  updaterStatus === "checking" ||
-                  updaterStatus === "downloading" ||
-                  updaterStatus === "installing"
-                }
-              >
-                {updaterStatus === "checking"
-                  ? "Checking…"
-                  : "Check for updates"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={`${ui.button} ${ui.ghost}`}
-                onClick={() => void openReleases()}
-              >
-                Open releases
-              </button>
-            )}
-          </div>
-        </div>
-
-        <p className={styles.help}>
-          The Windows installer and the Linux AppImage update themselves. The{" "}
-          <code>.deb</code> and portable <code>.zip</code> update manually from{" "}
+      <div className={styles.cardGrid}>
+        {SECTIONS.map((section, index) => (
           <button
+            key={section.key}
             type="button"
-            className={styles.inlineLink}
-            onClick={() => void openReleases()}
+            className={styles.settingCard}
+            style={{ animationDelay: `${Math.min(index * 35, 250)}ms` }}
+            onClick={() => openSection(section.key)}
           >
-            GitHub Releases
+            <div className={styles.settingCardHead}>
+              <div className={styles.cardIcon}>{section.icon}</div>
+              <ChevronRight size={18} className={styles.settingCardArrow} />
+            </div>
+            <div className={styles.cardTitle}>{section.title}</div>
+            <div className={styles.cardDesc}>{section.description}</div>
           </button>
-          .
-        </p>
-      </section>
+        ))}
+      </div>
 
-      {/* About */}
-      <section className={styles.card}>
-        <div className={styles.cardHead}>
-          <div className={styles.cardIcon}>
-            <Info size={18} />
-          </div>
-          <div>
-            <div className={styles.cardTitle}>About hush</div>
-            <div className={styles.cardDesc}>A calm, minimal music player.</div>
-          </div>
-        </div>
-        <div className={styles.aboutList}>
-          <p>
-            Audio is decoded natively through GStreamer, so playback quality
-            does not depend on the WebView. Supported formats: FLAC, MP3,
-            AAC/M4A, Opus, Ogg Vorbis and WAV. ALAC is supported when the
-            <code>gst-libav</code> package is installed.
-          </p>
-          <p>
-            Server credentials are stored locally in hush's configuration
-            directory. An API token is preferred over a password.
-          </p>
-          <p>
-            On NVIDIA + Wayland systems where the window misbehaves, launch with
-            <code>HUSH_SOFTWARE_RENDERING=1</code> to force WebKitGTK into a
-            software-rendered path.
-          </p>
-          <p>
-            Media keys and desktop controls are provided through MPRIS on Linux
-            and System Media Transport Controls on Windows; the system tray
-            offers quick playback controls everywhere.
-          </p>
-        </div>
-      </section>
+      <SettingsModal
+        open={activeSection === "server"}
+        title="Music server"
+        icon={<Server size={18} />}
+        onClose={closeSection}
+        onSave={() => void handleSave("server")}
+        saving={savingSection === "server"}
+      >
+        {draftForm && (
+          <ServerSection
+            form={draftForm}
+            update={update}
+            authMode={draftAuthMode}
+            setAuthMode={setDraftAuthMode}
+          />
+        )}
+      </SettingsModal>
+
+      <SettingsModal
+        open={activeSection === "playback"}
+        title="Playback"
+        icon={<Disc3 size={18} />}
+        onClose={closeSection}
+        onSave={() => void handleSave("playback")}
+        saving={savingSection === "playback"}
+      >
+        {draftForm && (
+          <PlaybackSection form={draftForm} update={update} />
+        )}
+      </SettingsModal>
+
+      <SettingsModal
+        open={activeSection === "discord"}
+        title="Discord Rich Presence"
+        icon={<Radio size={18} />}
+        onClose={closeSection}
+        onSave={() => void handleSave("discord")}
+        saving={savingSection === "discord"}
+      >
+        {draftForm && <DiscordSection form={draftForm} update={update} />}
+      </SettingsModal>
+
+      <SettingsModal
+        open={activeSection === "together"}
+        title="Listen together"
+        icon={<Handshake size={18} />}
+        onClose={closeSection}
+        onSave={() => void handleSave("together")}
+        saving={savingSection === "together"}
+      >
+        {draftForm && <TogetherSection form={draftForm} update={update} />}
+      </SettingsModal>
+
+      <SettingsModal
+        open={activeSection === "artistImages"}
+        title="Artist images"
+        icon={<Users size={18} />}
+        onClose={closeSection}
+        onSave={() => void handleSave("artistImages")}
+        saving={savingSection === "artistImages"}
+      >
+        {draftForm && (
+          <ArtistImagesSection
+            form={draftForm}
+            update={update}
+            artistCache={artistCache}
+            clearingCache={clearingCache}
+            onClearCache={handleClearArtistCache}
+          />
+        )}
+      </SettingsModal>
+
+      <SettingsModal
+        open={activeSection === "updates"}
+        title="Updates"
+        icon={<RefreshCw size={18} />}
+        onClose={closeSection}
+        onSave={() => void handleSave("updates")}
+        saving={savingSection === "updates"}
+      >
+        {draftForm && (
+          <UpdatesSection
+            form={draftForm}
+            update={update}
+            updaterSupported={updaterSupported}
+            updaterStatus={updaterStatus}
+            updaterVersion={updaterVersion}
+            currentVersion={currentVersion}
+            updateNote={updateNote}
+            onCheck={() => void checkUpdates(true)}
+            onOpenPrompt={openUpdatePrompt}
+            onOpenReleases={openReleases}
+          />
+        )}
+      </SettingsModal>
     </div>
   );
 }
