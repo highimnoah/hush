@@ -610,29 +610,54 @@ impl Engine {
             .property("message-magnitude", true)
             .build()
         {
+            // The audio sink buffers audio ahead of playback, so a plain tee
+            // branch analyzes samples up to the sink's latency early. A queue
+            // lets the tee keep the sink fed, while the clock-synced identity
+            // releases buffers when they are actually due to be heard.
+            let spec_queue = gst::ElementFactory::make("queue")
+                .property("max-size-time", 3_000_000_000u64)
+                .property("max-size-buffers", 0u32)
+                .property("max-size-bytes", 0u32)
+                .build()
+                .map_err(|err| element_error("queue", err))?;
             let spec_convert = gst::ElementFactory::make("audioconvert")
                 .build()
                 .map_err(|err| element_error("audioconvert", err))?;
+            let spec_sync = gst::ElementFactory::make("identity")
+                .property("sync", true)
+                .property("silent", true)
+                .build()
+                .map_err(|err| element_error("identity", err))?;
             let spec_sink = gst::ElementFactory::make("fakesink")
                 .property("sync", false)
                 .property("async", false)
                 .build()
                 .map_err(|err| element_error("fakesink", err))?;
-            for element in [&spec_convert, &spectrum, &spec_sink] {
+            for element in [
+                &spec_queue,
+                &spec_convert,
+                &spec_sync,
+                &spectrum,
+                &spec_sink,
+            ] {
                 chain.add(element).map_err(|e| e.to_string())?;
             }
-            gst::Element::link_many([&spec_convert, &spectrum, &spec_sink])
-                .map_err(|e| e.to_string())?;
+            gst::Element::link_many([
+                &spec_queue,
+                &spec_convert,
+                &spec_sync,
+                &spectrum,
+                &spec_sink,
+            ])
+            .map_err(|e| e.to_string())?;
 
             let Some(spec_src) = tee.request_pad_simple("src_%u") else {
                 return Err("tee has no spectrum request pad".to_string());
             };
-            let spec_convert_sink = spec_convert
+            let spec_queue_sink = spec_queue
                 .static_pad("sink")
-                .ok_or_else(|| "audioconvert has no sink pad".to_string())?;
-            spec_src
-                .link(&spec_convert_sink)
-                .map_err(|e| e.to_string())?;
+                .ok_or_else(|| "queue has no sink pad".to_string())?;
+            spec_src.link(&spec_queue_sink).map_err(|e| e.to_string())?;
         } else {
             eprintln!("[hush] spectrum element unavailable; visualizer will fall back");
         }
