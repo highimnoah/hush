@@ -123,7 +123,10 @@ export function PlayerBar() {
         <div className={styles.meta}>
           {track?.albumId ? (
             <Link
-              to={`/albums/${track.albumId}`}
+              to={{
+                pathname: `/albums/${track.albumId}`,
+                search: `?track=${track.id}`,
+              }}
               className={`${styles.title} ${styles.metaLink}`}
               title={track.title}
               onClick={() => queueOpen && setQueueOpen(false)}

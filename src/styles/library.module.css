@@ -396,7 +396,7 @@
   background: var(--surface-3);
 }
 
-/* ---------- Equalizer ---------- */
+/* ---------- Spectrum visualizer ---------- */
 .eq {
   display: flex;
   align-items: flex-end;
@@ -405,36 +405,14 @@
 }
 .eq span {
   width: 3px;
+  height: 14px;
   border-radius: 1px;
   background: var(--accent);
   transform-origin: bottom;
-  animation: hush-eq 900ms ease-in-out infinite;
-}
-.eq span:nth-child(1) {
-  height: 62%;
-  animation-delay: -0.25s;
-}
-.eq span:nth-child(2) {
-  height: 100%;
-  animation-delay: -0.55s;
-}
-.eq span:nth-child(3) {
-  height: 44%;
-  animation-delay: -0.4s;
+  will-change: transform;
 }
 .eqPaused span {
-  animation-play-state: paused;
-  opacity: 0.7;
-}
-
-@keyframes hush-eq {
-  0%,
-  100% {
-    transform: scaleY(0.4);
-  }
-  50% {
-    transform: scaleY(1);
-  }
+  opacity: 0.55;
 }
 
 /* ---------- Detail hero ---------- */

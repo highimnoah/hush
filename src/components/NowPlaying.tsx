@@ -199,7 +199,10 @@ export function NowPlaying() {
             <div className={fullscreen.titleRow}>
               {track?.albumId ? (
                 <Link
-                  to={`/albums/${track.albumId}`}
+                  to={{
+                    pathname: `/albums/${track.albumId}`,
+                    search: `?track=${track.id}`,
+                  }}
                   className={`${fullscreen.title} ${fullscreen.metaLink}`}
                   title={track.title}
                   onClick={() => setOpen(false)}

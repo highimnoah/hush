@@ -71,6 +71,8 @@ pub struct Settings {
     pub transition_mode: TransitionMode,
     /// Fade length in seconds (1–8) for `transition_mode = "fade"`.
     pub fade_seconds: u32,
+    /// Extra high-frequency boost for the spectrum visualizer, in dB (0–24).
+    pub spectrum_boost: f64,
 
     // --- discord ---
     pub discord_enabled: bool,
@@ -121,6 +123,7 @@ impl Default for Settings {
             lrclib_lyrics: true,
             transition_mode: TransitionMode::Gapless,
             fade_seconds: 3,
+            spectrum_boost: 24.0,
 
             discord_enabled: false,
             discord_client_id: "1573866319844212849".into(),

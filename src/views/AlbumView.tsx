@@ -1,6 +1,6 @@
 import { Heart, Play, Shuffle } from "lucide-react";
-import { useMemo } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { AlbumCard } from "../components/library/AlbumCard";
 import { AsyncContent } from "../components/ui/AsyncContent";
@@ -21,6 +21,39 @@ import ui from "../styles/ui.module.css";
 
 function AlbumBody({ detail }: { detail: AlbumDetail }) {
   const { album, songs } = detail;
+  const [searchParams] = useSearchParams();
+  const trackParam = searchParams.get("track");
+  const scrolledRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!trackParam) return;
+    if (scrolledRef.current === trackParam) return;
+
+    const scrollToTrack = (attempt: number) => {
+      const row = document.querySelector(
+        `[data-song-id="${trackParam}"]`,
+      ) as HTMLElement | null;
+
+      if (row) {
+        scrolledRef.current = trackParam;
+        // Use instant scroll: smooth scrolling over hundreds of rows in a
+        // content-visibility list often stops short of the target.
+        row.scrollIntoView({ block: "center", behavior: "auto" });
+        return;
+      }
+
+      if (attempt < 10) {
+        setTimeout(() => scrollToTrack(attempt + 1), 50);
+      }
+    };
+
+    // Defer past AppShell's pathname-change scroll-to-top effect and any
+    // entrance animations, then try to scroll the row into view.
+    requestAnimationFrame(() => {
+      setTimeout(() => scrollToTrack(0), 0);
+    });
+  }, [trackParam, detail]);
+
   const playSongs = usePlayer((state) => state.playSongs);
   const playShuffled = usePlayer((state) => state.playShuffled);
   const starred = useLibrary((state) =>

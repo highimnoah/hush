@@ -13,6 +13,7 @@ import { UpdateDialog } from "./components/ui/UpdateDialog";
 import { WindowResizeHandles } from "./components/ui/WindowResizeHandles";
 import { dataCache } from "./lib/cache";
 import { api, subscribePlayerEvents } from "./lib/ipc";
+import { setSpectrumBands } from "./lib/spectrum";
 import type { RepeatMode } from "./lib/types";
 import { usePlayer } from "./store/player";
 import { useSession } from "./store/session";
@@ -175,6 +176,7 @@ function useAppBootstrap() {
         usePlayer
           .getState()
           .setWaveform(event.trackId, event.peaks, event.complete),
+      spectrum: (event) => setSpectrumBands(event.bands),
       session: (snapshot) => useSession.getState().setSnapshot(snapshot),
       command: (command) => handleUiCommand(command.action, command.value),
       advanced: (event) => usePlayer.getState().onAdvanced(event.trackId),

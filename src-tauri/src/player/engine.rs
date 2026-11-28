@@ -19,7 +19,13 @@ const POSITION_INTERVAL: Duration = Duration::from_millis(200);
 const MPRIS_POSITION_INTERVAL: Duration = Duration::from_millis(1000);
 const DISCORD_REFRESH: Duration = Duration::from_secs(12);
 const LEVELS_INTERVAL: Duration = Duration::from_millis(40);
+const SPECTRUM_INTERVAL: Duration = Duration::from_millis(40);
+const SPECTRUM_BANDS: u32 = 96;
+const SPECTRUM_OUTPUT_BANDS: usize = 5;
+const SPECTRUM_FLOOR_DB: f64 = -60.0;
+const SPECTRUM_MAX_BOOST_DB: f64 = 36.0;
 const LEVEL_ELEMENT_NAME: &str = "hush-level";
+const SPECTRUM_ELEMENT_NAME: &str = "hush-spectrum";
 
 /// How many consecutive ticks (≈60 ms each) a boundary condition must hold
 /// before a fade is allowed to start. Guards against position-query transients.
@@ -61,6 +67,12 @@ struct AdvancedEvent {
 struct LevelsEvent {
     peak: f64,
     rms: f64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpectrumEvent {
+    bands: [f32; SPECTRUM_OUTPUT_BANDS],
 }
 
 fn log_line(message: &str) {
@@ -163,6 +175,7 @@ struct Engine {
 
     transition_mode: TransitionMode,
     fade_seconds: f64,
+    spectrum_boost: f64,
     fade_level: f64,
     fade_ramp: Option<FadeRamp>,
     sleep_anchor: Option<f64>,
@@ -171,6 +184,9 @@ struct Engine {
     levels_enabled: bool,
     last_levels: Option<(f64, f64)>,
     last_level_emit: Instant,
+
+    last_spectrum: [f32; SPECTRUM_OUTPUT_BANDS],
+    last_spectrum_emit: Instant,
 
     last_position_emit: Instant,
     last_mpris_position: Instant,
@@ -192,6 +208,7 @@ pub fn run(
     preamp: f64,
     transition_mode: TransitionMode,
     fade_seconds: f64,
+    spectrum_boost: f64,
 ) {
     if gst::init().is_err() {
         emit_error(
@@ -228,6 +245,7 @@ pub fn run(
         settle_until: None,
         transition_mode,
         fade_seconds: fade_seconds.clamp(1.0, 8.0),
+        spectrum_boost: spectrum_boost.clamp(0.0, SPECTRUM_MAX_BOOST_DB),
         fade_level: 1.0,
         fade_ramp: None,
         sleep_anchor: None,
@@ -235,6 +253,10 @@ pub fn run(
         levels_enabled: false,
         last_levels: None,
         last_level_emit: Instant::now() - LEVELS_INTERVAL,
+
+        last_spectrum: [0.0; SPECTRUM_OUTPUT_BANDS],
+        last_spectrum_emit: Instant::now() - SPECTRUM_INTERVAL,
+
         last_position_emit: Instant::now() - POSITION_INTERVAL,
         last_mpris_position: Instant::now() - MPRIS_POSITION_INTERVAL,
         last_discord: Instant::now() - DISCORD_REFRESH,
@@ -318,6 +340,9 @@ impl Engine {
                 if let Some(rg) = self.rg_el.clone() {
                     rg.set_property("pre-amp", db);
                 }
+            }
+            Command::SetSpectrumBoost(db) => {
+                self.spectrum_boost = db.clamp(0.0, SPECTRUM_MAX_BOOST_DB);
             }
             Command::Preload { url, track } => self.preload(url, track),
             Command::ClearPreload => self.clear_preload(),
@@ -573,6 +598,43 @@ impl Engine {
                 }
                 gst::PadProbeReturn::Ok
             });
+        }
+
+        // Spectrum visualizer branch (pre-volume so it dances even when muted).
+        if let Ok(spectrum) = gst::ElementFactory::make("spectrum")
+            .property("name", SPECTRUM_ELEMENT_NAME)
+            .property("bands", SPECTRUM_BANDS)
+            .property("interval", 40_000_000u64)
+            .property("threshold", -90i32)
+            .property("post-messages", true)
+            .property("message-magnitude", true)
+            .build()
+        {
+            let spec_convert = gst::ElementFactory::make("audioconvert")
+                .build()
+                .map_err(|err| element_error("audioconvert", err))?;
+            let spec_sink = gst::ElementFactory::make("fakesink")
+                .property("sync", false)
+                .property("async", false)
+                .build()
+                .map_err(|err| element_error("fakesink", err))?;
+            for element in [&spec_convert, &spectrum, &spec_sink] {
+                chain.add(element).map_err(|e| e.to_string())?;
+            }
+            gst::Element::link_many([&spec_convert, &spectrum, &spec_sink])
+                .map_err(|e| e.to_string())?;
+
+            let Some(spec_src) = tee.request_pad_simple("src_%u") else {
+                return Err("tee has no spectrum request pad".to_string());
+            };
+            let spec_convert_sink = spec_convert
+                .static_pad("sink")
+                .ok_or_else(|| "audioconvert has no sink pad".to_string())?;
+            spec_src
+                .link(&spec_convert_sink)
+                .map_err(|e| e.to_string())?;
+        } else {
+            eprintln!("[hush] spectrum element unavailable; visualizer will fall back");
         }
 
         let tee_sink = tee
@@ -1165,30 +1227,30 @@ impl Engine {
     }
 
     fn on_element_message(&mut self, message: &gst::message::Element) {
-        if !self.levels_enabled {
-            return;
-        }
         let Some(source) = message.src() else {
             return;
         };
-        if source.name() != LEVEL_ELEMENT_NAME {
-            return;
-        }
         let Some(structure) = message.structure() else {
             return;
         };
-        if structure.name() != "level" {
+        let name = source.name();
+        let structure_name = structure.name();
+
+        if self.levels_enabled && name == LEVEL_ELEMENT_NAME && structure_name == "level" {
+            let peak = read_level_array(structure, "peak")
+                .into_iter()
+                .fold(0.0_f64, f64::max);
+            let rms = read_level_array(structure, "rms")
+                .into_iter()
+                .fold(0.0_f64, f64::max);
+
+            self.last_levels = Some((db_to_amplitude(peak, true), db_to_amplitude(rms, false)));
             return;
         }
 
-        let peak = read_level_array(structure, "peak")
-            .into_iter()
-            .fold(0.0_f64, f64::max);
-        let rms = read_level_array(structure, "rms")
-            .into_iter()
-            .fold(0.0_f64, f64::max);
-
-        self.last_levels = Some((db_to_amplitude(peak, true), db_to_amplitude(rms, false)));
+        if name == SPECTRUM_ELEMENT_NAME && structure_name == "spectrum" {
+            self.last_spectrum = read_spectrum(structure, self.spectrum_boost);
+        }
     }
 
     fn refresh_duration(&mut self) {
@@ -1269,6 +1331,7 @@ impl Engine {
             }
 
             self.emit_levels();
+            self.emit_spectrum();
         }
 
         if self
@@ -1307,6 +1370,19 @@ impl Engine {
         };
         self.last_level_emit = Instant::now();
         let _ = self.app.emit("player://levels", LevelsEvent { peak, rms });
+    }
+
+    fn emit_spectrum(&mut self) {
+        if self.last_spectrum_emit.elapsed() < SPECTRUM_INTERVAL {
+            return;
+        }
+        self.last_spectrum_emit = Instant::now();
+        let _ = self.app.emit(
+            "player://spectrum",
+            SpectrumEvent {
+                bands: self.last_spectrum,
+            },
+        );
     }
 
     fn on_eos(&mut self) {
@@ -1473,16 +1549,48 @@ fn find_output_sink(pipeline: &gst::Pipeline) -> Option<gst::Element> {
 }
 
 fn read_level_array(structure: &gst::StructureRef, name: &str) -> Vec<f64> {
-    structure
-        .get::<glib::ValueArray>(name)
-        .map(|array| {
-            array
-                .as_slice()
-                .iter()
-                .filter_map(|value| value.get::<f64>().ok())
-                .collect()
+    // GStreamer 1.20+ uses GstValueList for level/spectrum arrays; older
+    // versions used GValueArray. Try both so we work either way.
+    let result = structure
+        .get::<gst::List>(name)
+        .map(|list| {
+            list.iter()
+                .filter_map(|value| {
+                    value
+                        .get::<f64>()
+                        .ok()
+                        .or_else(|| value.get::<f32>().ok().map(f64::from))
+                })
+                .collect::<Vec<f64>>()
         })
-        .unwrap_or_default()
+        .or_else(|_| {
+            structure.get::<gst::Array>(name).map(|array| {
+                array
+                    .iter()
+                    .filter_map(|value| {
+                        value
+                            .get::<f64>()
+                            .ok()
+                            .or_else(|| value.get::<f32>().ok().map(f64::from))
+                    })
+                    .collect::<Vec<f64>>()
+            })
+        })
+        .or_else(|_| {
+            structure.get::<glib::ValueArray>(name).map(|array| {
+                array
+                    .as_slice()
+                    .iter()
+                    .filter_map(|value| {
+                        value
+                            .get::<f64>()
+                            .ok()
+                            .or_else(|| value.get::<f32>().ok().map(f64::from))
+                    })
+                    .collect::<Vec<f64>>()
+            })
+        });
+    result.unwrap_or_default()
 }
 
 /// `level` reports peak as a power ratio (10·log10) and RMS as amplitude
@@ -1493,6 +1601,82 @@ fn db_to_amplitude(db: f64, power: bool) -> f64 {
     }
     let divisor = if power { 10.0 } else { 20.0 };
     10_f64.powf(db / divisor).clamp(0.0, 1.0)
+}
+
+/// Map a dB magnitude to a 0..1 visual value using a linear dB scale. A small
+/// amount of headroom (+6 dB) keeps the bass bar from hard-clipping at 1.0 so
+/// it still moves with the music's dynamics.
+fn spectrum_band_value(db: f64) -> f64 {
+    if !db.is_finite() {
+        return 0.0;
+    }
+    let floor = SPECTRUM_FLOOR_DB;
+    let headroom = 6.0;
+    ((db - floor) / (headroom - floor)).clamp(0.0, 1.0)
+}
+
+/// Aggregate the spectrum band magnitudes into `SPECTRUM_OUTPUT_BANDS` buckets.
+/// The spectrum element's bands are evenly spaced in frequency, so most musical
+/// energy sits in the first few bands; we use musical band edges and an
+/// adjustable high-frequency boost (applied in the dB domain) so the right-hand
+/// bars stay lively.
+fn aggregate_spectrum(magnitudes: &[f64], boost_db: f64) -> [f32; SPECTRUM_OUTPUT_BANDS] {
+    if magnitudes.len() < SPECTRUM_OUTPUT_BANDS {
+        return [0.0; SPECTRUM_OUTPUT_BANDS];
+    }
+
+    let band_count = magnitudes.len();
+    let mut out = [0.0_f64; SPECTRUM_OUTPUT_BANDS];
+
+    // Musical band edges (Hz) mapped onto the spectrum element's linear
+    // frequency bands. The element splits 0..Nyquist evenly, so the top of the
+    // range (above ~16 kHz) is almost always empty. Capping the last bucket
+    // around 16 kHz keeps the right-hand bar responsive instead of dead.
+    const BUCKET_EDGES_HZ: [f64; SPECTRUM_OUTPUT_BANDS + 1] =
+        [0.0, 500.0, 1_500.0, 4_000.0, 9_000.0, 16_000.0];
+    const NYQUIST_HZ: f64 = 24_000.0;
+
+    let mut boundaries = [0usize; SPECTRUM_OUTPUT_BANDS + 1];
+    boundaries[0] = 0;
+
+    for i in 1..SPECTRUM_OUTPUT_BANDS {
+        let fraction = BUCKET_EDGES_HZ[i] / NYQUIST_HZ;
+        let index = (fraction * band_count as f64).round() as usize;
+        // Guarantee at least one band per bucket, even for small test inputs.
+        boundaries[i] = index.clamp(
+            boundaries[i - 1] + 1,
+            band_count - (SPECTRUM_OUTPUT_BANDS - i),
+        );
+    }
+    boundaries[SPECTRUM_OUTPUT_BANDS] = band_count;
+
+    let last = (SPECTRUM_OUTPUT_BANDS - 1) as f64;
+
+    for (i, bucket) in out.iter_mut().enumerate() {
+        let start = boundaries[i];
+        let end = boundaries[i + 1].min(band_count).max(start);
+        let slice = &magnitudes[start..end];
+        if slice.is_empty() {
+            continue;
+        }
+
+        // Average the bucket's energy (power domain), then stay in dB for the
+        // height mapping. A plain mean would let dozens of empty high bands
+        // dilute a single cymbal hit; the energy average keeps sparse
+        // high-frequency content visible without returning to linear
+        // amplitude heights.
+        let power = slice.iter().map(|db| 10_f64.powf(db / 10.0)).sum::<f64>() / slice.len() as f64;
+        let avg_db = 10.0 * power.log10();
+        let tilt = (i as f64 / last).powf(1.2);
+        *bucket = spectrum_band_value(avg_db + boost_db * tilt);
+    }
+
+    out.map(|v| v as f32)
+}
+
+fn read_spectrum(structure: &gst::StructureRef, boost_db: f64) -> [f32; SPECTRUM_OUTPUT_BANDS] {
+    let magnitudes = read_level_array(structure, "magnitude");
+    aggregate_spectrum(&magnitudes, boost_db)
 }
 
 #[cfg(test)]
@@ -1630,6 +1814,101 @@ mod tests {
         assert!(
             pipeline_position - sink_position > 0.2,
             "expected the pipeline query to lead the sink: pipeline={pipeline_position:.2} sink={sink_position:.2}"
+        );
+    }
+
+    #[test]
+    fn aggregate_spectrum_empty() {
+        let out = aggregate_spectrum(&[], 0.0);
+        assert_eq!(out, [0.0; SPECTRUM_OUTPUT_BANDS]);
+    }
+
+    #[test]
+    fn aggregate_spectrum_spreads_energy() {
+        // 96 bands (the real band count): put a strong signal in the lowest
+        // bands and silence in the rest.
+        let mut input = [-80.0_f64; 96];
+        input[0] = -6.0;
+        input[1] = -6.0;
+        let out = aggregate_spectrum(&input, 0.0);
+
+        assert!(out[0] > 0.7, "first bucket should be loud: {}", out[0]);
+        assert!(
+            out.iter().all(|v| *v >= 0.0 && *v <= 1.0),
+            "all buckets must be normalized 0..1"
+        );
+        assert!(
+            out[4] < out[0],
+            "high-frequency bucket should be quieter than bass: {} vs {}",
+            out[4],
+            out[0]
+        );
+    }
+
+    #[test]
+    fn aggregate_spectrum_full_scale() {
+        let input = [0.0_f64; 96];
+        let out = aggregate_spectrum(&input, 0.0);
+        // +6 dB of headroom means 0 dB input maps to ~0.91, not 1.0.
+        assert!(out.iter().all(|v| *v >= 0.85), "full-scale -> near the top");
+        assert!(out.iter().all(|v| *v <= 1.0), "values stay clamped to 1.0");
+    }
+
+    #[test]
+    fn aggregate_spectrum_headroom_unpins_bass() {
+        // A loud bass bucket should no longer be clamped to exactly 1.0.
+        let input = [0.0_f64; 96];
+        let out = aggregate_spectrum(&input, 0.0);
+        assert!(out[0] < 1.0, "bass should have headroom: {}", out[0]);
+        assert!(
+            out[0] > 0.85,
+            "bass should still be near the top: {}",
+            out[0]
+        );
+    }
+
+    #[test]
+    fn aggregate_spectrum_boost_lifts_highs() {
+        let mut input = [-80.0_f64; 96];
+        for band in &mut input[40..60] {
+            *band = -40.0;
+        }
+        let unboosted = aggregate_spectrum(&input, 0.0);
+        let boosted = aggregate_spectrum(&input, 24.0);
+        assert!(
+            boosted[4] > unboosted[4],
+            "high boost should raise the last bucket"
+        );
+    }
+
+    #[test]
+    fn aggregate_spectrum_quiet_highs_are_visible_with_boost() {
+        // A quiet -50 dB signal across the top bucket is barely audible, but
+        // with the default 24 dB boost it should produce a clearly visible bar.
+        let mut input = [-80.0_f64; 96];
+        for band in &mut input[40..60] {
+            *band = -50.0;
+        }
+        let out = aggregate_spectrum(&input, 24.0);
+        assert!(
+            out[4] > 0.3,
+            "default boost should make quiet highs visible: {}",
+            out[4]
+        );
+    }
+
+    #[test]
+    fn aggregate_spectrum_high_tone_lands_in_top_bar() {
+        // ~10 kHz is band 40 at 48 kHz. It should drive the last bar, not the
+        // first, and the upper bands above ~16 kHz must not dilute it.
+        let mut input = [-80.0_f64; 96];
+        input[40] = -10.0;
+        let out = aggregate_spectrum(&input, 24.0);
+        assert!(out[4] > 0.5, "10 kHz should light the top bar: {}", out[4]);
+        assert!(
+            out[0] < 0.05,
+            "10 kHz should not move the bass bar: {}",
+            out[0]
         );
     }
 }

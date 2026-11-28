@@ -90,6 +90,7 @@ pub enum Command {
     SetMute(bool),
     SetReplayGain(ReplayGainMode),
     SetPreamp(f64),
+    SetSpectrumBoost(f64),
     Preload {
         url: String,
         track: TrackInfo,
@@ -154,6 +155,7 @@ impl PlayerHandle {
         preamp: f64,
         transition_mode: TransitionMode,
         fade_seconds: f64,
+        spectrum_boost: f64,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
         let snapshot = Arc::new(Mutex::new(PlayerSnapshot {
@@ -180,6 +182,7 @@ impl PlayerHandle {
                     preamp,
                     transition_mode,
                     fade_seconds,
+                    spectrum_boost,
                 );
             });
 

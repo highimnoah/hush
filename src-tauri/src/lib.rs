@@ -109,6 +109,7 @@ pub fn run() {
                 settings.replaygain_preamp,
                 settings.transition_mode,
                 settings.fade_seconds as f64,
+                settings.spectrum_boost,
             );
 
             let session =

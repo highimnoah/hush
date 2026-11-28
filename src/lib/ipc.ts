@@ -30,6 +30,7 @@ import type {
   ServerInfo,
   Settings,
   Song,
+  SpectrumEvent,
   StarKind,
   TrackInfo,
   TransitionMode,
@@ -179,6 +180,7 @@ export interface PlayerEventHandlers {
   gain?: (event: GainEvent) => void;
   track?: (track: TrackInfo | null) => void;
   waveform?: (event: WaveformEvent) => void;
+  spectrum?: (event: SpectrumEvent) => void;
   session?: (snapshot: SessionSnapshot) => void;
   command?: (command: UiCommand) => void;
   advanced?: (event: AdvancedEvent) => void;
@@ -244,6 +246,13 @@ export function subscribePlayerEvents(handlers: PlayerEventHandlers): () => void
     track(
       listen<WaveformEvent>("hush://waveform", (event) =>
         handlers.waveform?.(event.payload),
+      ),
+    );
+  }
+  if (handlers.spectrum) {
+    track(
+      listen<SpectrumEvent>("player://spectrum", (event) =>
+        handlers.spectrum?.(event.payload),
       ),
     );
   }

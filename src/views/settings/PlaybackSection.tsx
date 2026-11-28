@@ -65,6 +65,28 @@ export function PlaybackSection({ form, update }: PlaybackSectionProps) {
         />
       </div>
 
+      <div>
+        <div className={styles.rowBetween}>
+          <div>
+            <div className={styles.rowLabel}>Visualizer high boost</div>
+            <div className={styles.rowHint}>
+              Extra high-frequency emphasis for the playing-track spectrum bars.
+            </div>
+          </div>
+          <span className={styles.preampValue}>
+            {form.spectrumBoost > 0 ? "+" : ""}
+            {form.spectrumBoost.toFixed(0)} dB
+          </span>
+        </div>
+        <Slider
+          value={form.spectrumBoost}
+          max={36}
+          step={1}
+          ariaLabel="Visualizer high boost"
+          onChange={(value) => update({ spectrumBoost: Math.round(value) })}
+        />
+      </div>
+
       <div className={styles.rowBetween}>
         <div>
           <div className={styles.rowLabel}>Track transitions</div>

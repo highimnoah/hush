@@ -192,6 +192,7 @@ export interface Settings {
   lrclibLyrics: boolean;
   transitionMode: TransitionMode;
   fadeSeconds: number;
+  spectrumBoost: number;
   discordEnabled: boolean;
   discordClientId: string;
   discordDetails: string;
@@ -270,6 +271,10 @@ export interface WaveformEvent {
   trackId: string;
   peaks: number[];
   complete: boolean;
+}
+
+export interface SpectrumEvent {
+  bands: number[];
 }
 
 export interface AdvancedEvent {

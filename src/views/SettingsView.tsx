@@ -110,6 +110,7 @@ function sectionPatch(key: SectionKey, form: Settings): Partial<Settings> {
         replaygainPreamp: form.replaygainPreamp,
         transitionMode: form.transitionMode,
         fadeSeconds: form.fadeSeconds,
+        spectrumBoost: form.spectrumBoost,
         resumePlayback: form.resumePlayback,
         lrclibLyrics: form.lrclibLyrics,
       };

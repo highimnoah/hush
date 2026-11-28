@@ -23,6 +23,8 @@ The visual language is a flat, dark gothic-greyscale theme with off-white text, 
 - ReplayGain: Off / Track / Album, applied with GStreamer `rgvolume`, optional pre-amp.
 - Real waveform seek bar in the player bar and the fullscreen view, generated from the audio you play (a zero-bandwidth playthrough probe) plus a background analyser, persisted across restarts, and filled in progressively while the rest is analysed; hovering highlights the waveform bars up to the skip target and shows the target time, and the bar is hidden while the fullscreen view is open so only one timeline is visible.
 - Fullscreen Now Playing view with a calm dim backdrop, a toggleable sidebar (queue, lyrics, technical info), and an inline volume control.
+- Click the player bar or fullscreen title to open the current track's album and scroll directly to the playing song.
+- Live 5-bar spectrum visualizer next to the active track in every list, driven by the GStreamer audio pipeline.
 - Synced or plain lyrics from LRCLIB (default) or the music server (OpenSubsonic `getLyricsBySongId`), with click-to-seek lines.
 - Local lyrics layer and editor: tap-sync lines to playback, nudge/distribute timings, import and export `.lrc` files, and manage every edited track from a dedicated Lyrics view. Local lyrics always take priority.
 - Now Playing track information (format, bit depth, sample rate, bitrate, channels, ReplayGain gain, server) plus an explicit-content badge.
@@ -661,6 +663,9 @@ Navidrome should serve the **original** file (transcoding off) so ReplayGain tag
 - [ ] Album, artist, genre and playlist detail pages render; **Play** and **Shuffle** start playback.
 - [ ] Detail pages show a back button; it returns to the previous in-app view, or to the parent list when the page was opened directly.
 - [ ] An album page shows "More by …" and "More <genre> albums" when data exists, with no duplicates or empty headings; "See all" links open the artist/genre pages.
+- [ ] Clicking the player bar or fullscreen title opens that track's album and smoothly scrolls the playing row into the center of the view.
+- [ ] The active row in any track list shows a live 5-bar spectrum visualizer while playing; it pauses to a short static bar when paused and respects reduced motion.
+- [ ] Settings → Playback has a "Visualizer high boost" slider (0–36 dB); raising it makes the right-hand spectrum bars taller, lowering it makes them more linear/flat.
 - [ ] Scrolling over a volume slider steps the volume in both the player bar and the fullscreen view; the percentage chip appears for drag/wheel/keyboard changes; the page does not scroll.
 - [ ] Hovering a waveform shows a marker line, a highlighted skip region and the target time; dragging keeps the indicator on the commit target.
 - [ ] Genres list loads with counts; a genre page plays its songs (and albums when the server supports `byGenre`).

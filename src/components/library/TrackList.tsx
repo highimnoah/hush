@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { formatTime, isExplicit } from "../../lib/format";
+import { getSpectrumBands, SPECTRUM_BANDS } from "../../lib/spectrum";
 import type { Song } from "../../lib/types";
 import { useContextMenu } from "../../store/contextMenu";
 import { useLibrary } from "../../store/library";
@@ -17,15 +18,94 @@ import styles from "../../styles/library.module.css";
 import { Artwork } from "../ui/Artwork";
 import { ExplicitBadge } from "../ui/ExplicitBadge";
 
-function Equalizer({ playing }: { playing: boolean }) {
+const BAR_COUNT = SPECTRUM_BANDS;
+const MIN_BAR = 0.08;
+const DATA_TIMEOUT_MS = 250;
+const REDUCED_MOTION =
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function SpectrumBars({ playing }: { playing: boolean }) {
+  const barsRef = useRef<(HTMLSpanElement | null)[]>([]);
+  const currentRef = useRef<number[]>(new Array(BAR_COUNT).fill(MIN_BAR));
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!playing || REDUCED_MOTION) {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      // Reset to a short resting height so the paused state looks like the
+      // old equalizer: dimmed and still.
+      currentRef.current.fill(MIN_BAR);
+      for (let i = 0; i < BAR_COUNT; i += 1) {
+        const el = barsRef.current[i];
+        if (el) el.style.transform = `scaleY(${MIN_BAR})`;
+      }
+      return;
+    }
+
+    const loop = () => {
+      const frame = getSpectrumBands();
+      const now = performance.now();
+      const live = now - frame.receivedAt < DATA_TIMEOUT_MS;
+
+      for (let i = 0; i < BAR_COUNT; i += 1) {
+        let target: number;
+        if (live) {
+          target = (frame.bands[i] ?? 0);
+        } else {
+          // Graceful fallback when no real spectrum data is arriving.
+          const t = now / 1000;
+          target = Math.sin(t * 2.5 + i * 0.9) * 0.25 + 0.35;
+        }
+        target = Math.max(MIN_BAR, Math.min(1, target));
+
+        const current = currentRef.current[i];
+        // Faster attack, slower release for a more musical feel.
+        const k = target > current ? 0.45 : 0.18;
+        const next = current + (target - current) * k;
+        currentRef.current[i] = next;
+
+        const el = barsRef.current[i];
+        if (el) el.style.transform = `scaleY(${next.toFixed(3)})`;
+      }
+
+      rafRef.current = requestAnimationFrame(loop);
+    };
+
+    rafRef.current = requestAnimationFrame(loop);
+
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [playing]);
+
+  if (REDUCED_MOTION) {
+    return (
+      <div className={`${styles.eq} ${styles.eqPaused}`} aria-hidden="true">
+        {Array.from({ length: BAR_COUNT }).map((_, i) => (
+          <span key={i} style={{ transform: "scaleY(0.35)" }} />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`${styles.eq} ${playing ? "" : styles.eqPaused}`}
       aria-hidden="true"
     >
-      <span />
-      <span />
-      <span />
+      {Array.from({ length: BAR_COUNT }).map((_, i) => (
+        <span
+          key={i}
+          ref={(el) => {
+            barsRef.current[i] = el;
+          }}
+          style={{ transform: `scaleY(${MIN_BAR})` }}
+        />
+      ))}
     </div>
   );
 }
@@ -80,6 +160,7 @@ const TrackRow = memo(function TrackRow({
       style={
         animate ? { animationDelay: `${Math.min(index * 18, 360)}ms` } : undefined
       }
+      data-song-id={song.id}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -102,7 +183,7 @@ const TrackRow = memo(function TrackRow({
         title="Play"
       >
         {playing ? (
-          <Equalizer playing />
+          <SpectrumBars playing />
         ) : (
           <>
             <span className={styles.indexNumber}>{index}</span>

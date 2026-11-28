@@ -37,6 +37,9 @@ pub fn update_settings(state: State<'_, AppState>, settings: Settings) -> Result
         saved.transition_mode,
         saved.fade_seconds as f64,
     ));
+    state
+        .player
+        .send(Command::SetSpectrumBoost(saved.spectrum_boost));
     state.discord.configure(DiscordConfig::from(&saved));
     Ok(saved)
 }
